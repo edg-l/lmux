@@ -121,7 +121,7 @@ function findGgufFiles(dir: string): string[] {
 			const fullPath = join(dir, entry.name);
 			if (entry.isDirectory()) {
 				results.push(...findGgufFiles(fullPath));
-			} else if (entry.name.endsWith('.gguf')) {
+			} else if (entry.name.endsWith('.gguf') && !entry.name.includes('mmproj')) {
 				results.push(fullPath);
 			}
 		}
@@ -152,7 +152,7 @@ function findHfCacheGgufs(hubDir: string): string[] {
 					try {
 						const files = readdirSync(snapshotPath, { withFileTypes: true });
 						for (const file of files) {
-							if (file.name.endsWith('.gguf')) {
+							if (file.name.endsWith('.gguf') && !file.name.includes('mmproj')) {
 								const fullPath = join(snapshotPath, file.name);
 								// Verify the symlink target exists (skip .incomplete blobs)
 								try {

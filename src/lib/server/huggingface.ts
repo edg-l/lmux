@@ -222,7 +222,7 @@ export async function listRepoFiles(repoId: string): Promise<HfFileInfo[]> {
 	return entries
 		.filter((entry) => {
 			const name = entry.rfilename ?? entry.path ?? '';
-			return name.endsWith('.gguf') && entry.type !== 'directory';
+			return name.endsWith('.gguf') && !name.includes('mmproj') && entry.type !== 'directory';
 		})
 		.map((entry) => {
 			const filename = entry.rfilename ?? entry.path ?? '';
