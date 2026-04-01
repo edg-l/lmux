@@ -62,7 +62,10 @@ export const POST: RequestHandler = async ({ request }) => {
 				// Ensure all tool_calls have type: "function" (history from DB may lack it)
 				const normalized = body.messages.map((m) => {
 					if (m.tool_calls) {
-						return { ...m, tool_calls: m.tool_calls.map((tc) => ({ ...tc, type: 'function' as const })) };
+						return {
+							...m,
+							tool_calls: m.tool_calls.map((tc) => ({ ...tc, type: 'function' as const }))
+						};
 					}
 					return m;
 				});
