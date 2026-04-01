@@ -1826,12 +1826,12 @@
 										>
 											<p class="text-sm whitespace-pre-wrap text-white">{msg.content}</p>
 											{#if msg.images && msg.images.length > 0}
-												<div class="mt-2 flex flex-wrap gap-1.5">
+												<div class="mt-2 flex flex-wrap gap-2">
 													{#each msg.images as img (img.name)}
 														<img
 															src={img.dataUrl}
 															alt={img.name}
-															class="h-12 w-12 rounded border border-white/20 object-cover"
+															class="max-h-64 max-w-full rounded-lg border border-white/20 object-contain"
 														/>
 													{/each}
 												</div>
