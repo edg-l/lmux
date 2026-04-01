@@ -39,13 +39,16 @@ function htmlToReadableText(html: string): string {
 	text = text.replace(/<nav[\s\S]*?<\/nav>/gi, '');
 	text = text.replace(/<footer[\s\S]*?<\/footer>/gi, '');
 	// Convert links to markdown format: [text](url)
-	text = text.replace(/<a\s[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_, url, linkText) => {
-		const clean = linkText.replace(/<[^>]+>/g, '').trim();
-		if (!clean) return '';
-		// Skip anchor-only links
-		if (url.startsWith('#')) return clean;
-		return `[${clean}](${url})`;
-	});
+	text = text.replace(
+		/<a\s[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
+		(_, url, linkText) => {
+			const clean = linkText.replace(/<[^>]+>/g, '').trim();
+			if (!clean) return '';
+			// Skip anchor-only links
+			if (url.startsWith('#')) return clean;
+			return `[${clean}](${url})`;
+		}
+	);
 	// Convert headings to markdown
 	text = text.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_, level, content) => {
 		const clean = content.replace(/<[^>]+>/g, '').trim();
