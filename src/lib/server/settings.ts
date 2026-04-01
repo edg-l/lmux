@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { getDb } from './db';
 
 const DEFAULT_MODELS_DIR = join(homedir(), '.local', 'share', 'lmux', 'models');
+const DEFAULT_KV_CACHE_DIR = join(homedir(), '.cache', 'lmux', 'kv');
 const HF_CACHE_DIR = join(homedir(), '.cache', 'huggingface', 'hub');
 
 const DEFAULTS: Record<string, string> = {
@@ -13,7 +14,7 @@ const DEFAULTS: Record<string, string> = {
 	vram_headroom_mb: '512',
 	tools_enabled: 'true',
 	searxng_url: '',
-	kv_cache_dir: ''
+	kv_cache_dir: DEFAULT_KV_CACHE_DIR
 };
 
 export function getSetting(key: string): string {
