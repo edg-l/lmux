@@ -4,7 +4,7 @@ import { hfFetch, fetchGenerationConfig } from './huggingface';
 import { getModelsDir } from './settings';
 import { scanModels } from './models';
 import { setSamplingParams } from './sampling';
-import { queryOne } from './db';
+import { queryOne, execute } from './db';
 
 export interface DownloadProgress {
 	filename: string;
@@ -131,7 +131,7 @@ async function doDownload(
 	signal: AbortSignal,
 	progress: DownloadProgress,
 	repoId: string,
-	_filename: string
+	hfFilename: string
 ): Promise<void> {
 	try {
 		const res = await hfFetch(url, { headers, signal });
@@ -202,6 +202,12 @@ async function doDownload(
 					$filepath: finalPath
 				});
 				if (model) {
+					// Set HF source metadata (scanModels can't infer this for non-cache files)
+					execute(
+						`UPDATE models SET hf_repo = $hf_repo, hf_filename = $hf_filename WHERE id = $id`,
+						{ $hf_repo: repoId, $hf_filename: hfFilename, $id: model.id }
+					);
+
 					const genConfig = await fetchGenerationConfig(repoId);
 					if (genConfig) {
 						setSamplingParams(
