@@ -11,7 +11,7 @@
 
 	let { projectId, filePath, oldContent = null }: Props = $props();
 
-	let diffMode = $state(false);
+	let diffMode = $state(true);
 
 	let content = $state('');
 	let totalLines = $state(0);
