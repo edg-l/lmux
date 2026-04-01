@@ -63,6 +63,12 @@
 			renderer: {
 				link({ href, text }) {
 					return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+				},
+				code({ text, lang }) {
+					const lines = text.split('\n');
+					const lineNumbers = lines.map((_, i) => `<span>${i + 1}</span>`).join('\n');
+					const langLabel = lang ? `<span class="code-lang">${lang}</span>` : '';
+					return `<div class="code-block">${langLabel}<pre><code class="hljs${lang ? ` language-${lang}` : ''}""><table class="code-table"><tr><td class="line-numbers" aria-hidden="true"><pre>${lineNumbers}</pre></td><td class="code-content"><pre>${text}</pre></td></tr></table></code></pre></div>`;
 				}
 			}
 		}
@@ -877,6 +883,18 @@
 	}
 
 	function renderMath(text: string): string {
+		// Protect code blocks and inline code from math processing
+		const codeBlocks: string[] = [];
+		text = text.replace(/```[\s\S]*?```/g, (match) => {
+			codeBlocks.push(match);
+			return `\x00CODE${codeBlocks.length - 1}\x00`;
+		});
+		const inlineCodes: string[] = [];
+		text = text.replace(/`[^`]+`/g, (match) => {
+			inlineCodes.push(match);
+			return `\x00INLINE${inlineCodes.length - 1}\x00`;
+		});
+
 		// Block math: $$...$$
 		text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
 			try {
@@ -885,7 +903,7 @@
 				return `<pre class="math-error">${math}</pre>`;
 			}
 		});
-		// Inline math: $...$ (but not $$, and not inside code)
+		// Inline math: $...$
 		text = text.replace(/(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g, (_, math) => {
 			try {
 				return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false });
@@ -893,6 +911,10 @@
 				return `<code>${math}</code>`;
 			}
 		});
+
+		// Restore code blocks
+		text = text.replace(/\x00CODE(\d+)\x00/g, (_, idx) => codeBlocks[parseInt(idx)]);
+		text = text.replace(/\x00INLINE(\d+)\x00/g, (_, idx) => inlineCodes[parseInt(idx)]);
 		return text;
 	}
 
@@ -2358,6 +2380,61 @@
 	}
 	:global(.user-content a:hover) {
 		opacity: 1;
+	}
+	:global(.assistant-content .code-block) {
+		position: relative;
+		margin: 0.75rem 0;
+		border-radius: 0.5rem;
+		overflow: hidden;
+		border: 1px solid var(--color-border);
+	}
+	:global(.assistant-content .code-block .code-lang) {
+		display: block;
+		padding: 0.25rem 0.75rem;
+		font-size: 0.65rem;
+		color: var(--color-text-muted);
+		background: rgba(255, 255, 255, 0.03);
+		border-bottom: 1px solid var(--color-border);
+		font-family: ui-monospace, monospace;
+	}
+	:global(.assistant-content .code-block pre) {
+		margin: 0;
+		padding: 0;
+	}
+	:global(.assistant-content .code-block code) {
+		display: block;
+		overflow-x: auto;
+		padding: 0;
+	}
+	:global(.assistant-content .code-table) {
+		border-collapse: collapse;
+		width: 100%;
+	}
+	:global(.assistant-content .line-numbers) {
+		vertical-align: top;
+		padding: 0.75rem 0;
+		width: 1px;
+		white-space: nowrap;
+		user-select: none;
+		-webkit-user-select: none;
+	}
+	:global(.assistant-content .line-numbers pre) {
+		padding: 0 0.75rem;
+		text-align: right;
+		color: var(--color-text-muted);
+		opacity: 0.4;
+		font-size: 0.75rem;
+		line-height: 1.5;
+	}
+	:global(.assistant-content .code-content) {
+		vertical-align: top;
+		width: 100%;
+	}
+	:global(.assistant-content .code-content pre) {
+		padding: 0.75rem 0.75rem 0.75rem 0;
+		overflow-x: auto;
+		font-size: 0.8rem;
+		line-height: 1.5;
 	}
 	:global(.assistant-content a) {
 		color: var(--color-accent);
