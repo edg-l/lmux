@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getMessages, addMessage } from '$lib/server/conversations';
+import { getMessages, addMessage, deleteMessagesFrom } from '$lib/server/conversations';
 
 export const GET: RequestHandler = async ({ params }) => {
 	const conversationId = parseInt(params.id);
@@ -33,4 +33,17 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		body.toolCalls
 	);
 	return json({ id }, { status: 201 });
+};
+
+export const DELETE: RequestHandler = async ({ params, request }) => {
+	const conversationId = parseInt(params.id);
+	if (isNaN(conversationId)) return json({ error: 'Invalid id' }, { status: 400 });
+	const body = (await request.json()) as { fromMessageId: number };
+
+	if (!body.fromMessageId || typeof body.fromMessageId !== 'number') {
+		return json({ error: 'Missing or invalid fromMessageId' }, { status: 400 });
+	}
+
+	deleteMessagesFrom(conversationId, body.fromMessageId);
+	return json({ ok: true });
 };

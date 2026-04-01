@@ -115,6 +115,13 @@ export function updateConversationModel(id: number, modelId: number): void {
 	);
 }
 
+export function deleteMessagesFrom(conversationId: number, messageId: number): void {
+	execute('DELETE FROM messages WHERE conversation_id = $cid AND id >= $mid', {
+		$cid: conversationId,
+		$mid: messageId
+	});
+}
+
 export function updateConversationTitle(id: number, title: string): void {
 	execute(
 		'UPDATE conversations SET title = $title, updated_at = CURRENT_TIMESTAMP WHERE id = $id',

@@ -117,6 +117,15 @@
 	// Feature 2: Export chat
 	let exportOpen = $state(false);
 
+	// Feature 5: Multi-turn editing
+	let editingMessageIdx: number | null = $state(null);
+	let editInput = $state('');
+
+	// Feature 6: Reasoning budget
+	let thinkingBudgetEnabled = $state(false);
+	let thinkingBudgetValue = $state(4096);
+	let thinkingBudget = $derived(thinkingBudgetEnabled ? thinkingBudgetValue : -1);
+
 	// Feature 3: Token counter
 	let inputTokenEstimate = $derived(Math.ceil(input.length / 4));
 
@@ -475,7 +484,14 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					messages: chatMessages,
-					sampling: { temperature, top_p, top_k, min_p, repeat_penalty },
+					sampling: {
+						temperature,
+						top_p,
+						top_k,
+						min_p,
+						repeat_penalty,
+						thinking_budget: thinkingBudget
+					},
 					tools_enabled: toolsEnabled,
 					model_id: serverInfo?.modelId ?? null
 				}),
@@ -875,6 +891,29 @@
 		exportOpen = false;
 	}
 
+	async function saveEdit() {
+		if (editingMessageIdx === null || !activeConversationId) return;
+		const msg = messages[editingMessageIdx];
+		if (!msg?.id) return;
+
+		await fetch(`/api/conversations/${activeConversationId}/messages`, {
+			method: 'DELETE',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ fromMessageId: msg.id })
+		});
+
+		messages = messages.slice(0, editingMessageIdx);
+		input = editInput;
+		editingMessageIdx = null;
+		editInput = '';
+		sendMessage();
+	}
+
+	function cancelEdit() {
+		editingMessageIdx = null;
+		editInput = '';
+	}
+
 	function handleGlobalKeydown(e: KeyboardEvent) {
 		const target = e.target as HTMLElement;
 		const tagName = target.tagName.toLowerCase();
@@ -1241,6 +1280,34 @@
 							</div>
 						{/each}
 					</div>
+					<!-- Thinking Budget -->
+					<div class="mt-4 border-t border-[var(--color-border)] pt-4">
+						<div class="flex items-center gap-3">
+							<label class="flex items-center gap-2">
+								<input
+									type="checkbox"
+									bind:checked={thinkingBudgetEnabled}
+									class="accent-[var(--color-accent)]"
+								/>
+								<span class="text-xs text-[var(--color-text-muted)]">Thinking Budget</span>
+							</label>
+							{#if thinkingBudgetEnabled}
+								<span class="font-mono text-xs font-medium text-[var(--color-text-primary)]"
+									>{thinkingBudgetValue.toLocaleString()}</span
+								>
+								<input
+									type="range"
+									bind:value={thinkingBudgetValue}
+									min={0}
+									max={32768}
+									step={256}
+									class="sampling-range flex-1"
+								/>
+							{:else}
+								<span class="text-xs text-[var(--color-text-muted)]">Unlimited</span>
+							{/if}
+						</div>
+					</div>
 				</div>
 			</div>
 		{/if}
@@ -1317,11 +1384,60 @@
 					{#each messages as msg, idx}
 						{#if msg.role === 'user'}
 							<div class="flex justify-end">
-								<div
-									class="max-w-[85%] rounded-2xl rounded-br-sm bg-[var(--color-accent-dim)] px-4 py-2.5"
-								>
-									<p class="text-sm whitespace-pre-wrap text-white">{msg.content}</p>
-								</div>
+								{#if editingMessageIdx === idx}
+									<div class="flex w-full max-w-[85%] flex-col gap-2">
+										<textarea
+											bind:value={editInput}
+											rows={3}
+											class="w-full resize-none rounded-lg border border-[var(--color-accent)] bg-[var(--color-elevated)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] focus:outline-none"
+										></textarea>
+										<div class="flex justify-end gap-2">
+											<button
+												onclick={cancelEdit}
+												class="rounded border border-[var(--color-border)] px-3 py-1 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
+												>Cancel</button
+											>
+											<button
+												onclick={saveEdit}
+												class="rounded bg-[var(--color-accent-dim)] px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent)]"
+												>Save</button
+											>
+										</div>
+									</div>
+								{:else}
+									<div class="group/msg relative">
+										{#if !streaming}
+											<button
+												onclick={() => {
+													editingMessageIdx = idx;
+													editInput = msg.content;
+												}}
+												class="absolute top-1/2 -left-7 -translate-y-1/2 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity group-hover/msg:opacity-100 hover:text-[var(--color-text-secondary)]"
+												aria-label="Edit message"
+												title="Edit message"
+											>
+												<svg
+													class="h-3.5 w-3.5"
+													fill="none"
+													stroke="currentColor"
+													viewBox="0 0 24 24"
+													stroke-width="1.5"
+												>
+													<path
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125"
+													/>
+												</svg>
+											</button>
+										{/if}
+										<div
+											class="max-w-[85%] rounded-2xl rounded-br-sm bg-[var(--color-accent-dim)] px-4 py-2.5"
+										>
+											<p class="text-sm whitespace-pre-wrap text-white">{msg.content}</p>
+										</div>
+									</div>
+								{/if}
 							</div>
 						{:else if msg.role === 'tool_status'}
 							{@const isExpanded = expandedTools.has(idx)}

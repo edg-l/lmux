@@ -37,6 +37,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			top_k?: number;
 			min_p?: number;
 			repeat_penalty?: number;
+			thinking_budget?: number;
 		};
 		tools_enabled?: boolean;
 		model_id?: number | null;
@@ -78,7 +79,11 @@ export const POST: RequestHandler = async ({ request }) => {
 								top_k: body.sampling.top_k,
 								min_p: body.sampling.min_p,
 								repeat_penalty: body.sampling.repeat_penalty
-							})
+							}),
+							...(body.sampling?.thinking_budget != null &&
+								body.sampling.thinking_budget > 0 && {
+									thinking_budget: body.sampling.thinking_budget
+								})
 						})
 					});
 
