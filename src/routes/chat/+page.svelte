@@ -68,7 +68,7 @@
 					const trimmed = text.replace(/\s+$/, '');
 					// Wrap each line in a span for CSS counter line numbers
 					// Split on newlines while preserving hljs spans that may cross lines
-					const lines = trimmed.split('\n').map((line) => `<span class="line">${line || ' '}</span>`).join('\n');
+					const lines = trimmed.split('\n').map((line) => `<span class="line">${line || ' '}</span>`).join('');
 					const langLabel = lang ? `<div class="code-lang">${lang}</div>` : '';
 					return `<div class="code-block">${langLabel}<pre class="code-content"><code class="hljs${lang ? ` language-${lang}` : ''}">${lines}</code></pre></div>`;
 				}
