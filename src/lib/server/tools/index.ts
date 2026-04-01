@@ -24,6 +24,7 @@ export interface ToolDefinition {
 export interface ToolResult {
 	result: string;
 	fileChanged?: { path: string; operation: 'created' | 'modified' };
+	blockedPaths?: string[];
 }
 
 const codingToolDefinitions: ToolDefinition[] = [
@@ -287,11 +288,11 @@ export async function executeTool(
 		}
 		case 'run_command': {
 			if (!project) throw new Error('run_command requires a project context');
-			const result = await runProjectCommand(
+			const { output, blockedPaths } = await runProjectCommand(
 				args as { command: string; timeout?: number; offset?: number; max_length?: number },
 				project.path
 			);
-			return { result };
+			return { result: output, blockedPaths };
 		}
 		default:
 			throw new Error(`Unknown tool: ${name}`);

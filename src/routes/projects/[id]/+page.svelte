@@ -41,6 +41,13 @@
 		approved: boolean | null;
 	}
 
+	interface SandboxBlocked {
+		paths: string[];
+		absolutePaths: string[];
+		resolved?: boolean;
+		allowedPath?: string;
+	}
+
 	interface Message {
 		id?: number;
 		role: string;
@@ -51,6 +58,7 @@
 		toolArgs?: string;
 		toolStatus?: 'running' | 'done';
 		approval?: ApprovalRequest;
+		sandboxBlocked?: SandboxBlocked;
 	}
 
 	interface ServerInfo {
@@ -350,12 +358,12 @@
 		return result;
 	}
 
-	async function handleApproval(requestId: string, approved: boolean) {
+	async function handleApproval(requestId: string, approved: boolean, remember = false) {
 		try {
 			await fetch('/api/approve', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ requestId, approved })
+				body: JSON.stringify({ requestId, approved, remember })
 			});
 		} catch {
 			// ignore
@@ -366,6 +374,27 @@
 				return {
 					...m,
 					approval: { ...m.approval, resolved: true, approved }
+				};
+			}
+			return m;
+		});
+	}
+
+	async function handleAllowPath(absolutePath: string, displayPath: string) {
+		try {
+			await fetch('/api/sandbox/allow-path', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ path: absolutePath })
+			});
+		} catch {
+			// ignore
+		}
+		messages = messages.map((m) => {
+			if (m.sandboxBlocked && m.sandboxBlocked.absolutePaths.includes(absolutePath)) {
+				return {
+					...m,
+					sandboxBlocked: { ...m.sandboxBlocked, resolved: true, allowedPath: displayPath }
 				};
 			}
 			return m;
@@ -537,6 +566,18 @@
 										sandboxed: parsed.sandboxed ?? true,
 										resolved: false,
 										approved: null
+									}
+								}
+							];
+						} else if (parsed.type === 'sandbox_blocked') {
+							messages = [
+								...messages,
+								{
+									role: 'sandbox_blocked',
+									content: '',
+									sandboxBlocked: {
+										paths: parsed.paths ?? [],
+										absolutePaths: parsed.absolutePaths ?? []
 									}
 								}
 							];
@@ -1000,6 +1041,12 @@
 																Approve
 															</button>
 															<button
+																onclick={() => handleApproval(approval.requestId, true, true)}
+																class="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-500"
+															>
+																Always Allow
+															</button>
+															<button
 																onclick={() => handleApproval(approval.requestId, false)}
 																class="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-red-500"
 															>
@@ -1013,6 +1060,55 @@
 																: 'text-red-400'}"
 														>
 															{approval.approved ? 'Approved' : 'Denied'}
+														</span>
+													{/if}
+												</div>
+											</div>
+										{/if}
+									{:else if msg.role === 'sandbox_blocked'}
+										{@const sb = msg.sandboxBlocked}
+										{#if sb}
+											<div
+												class="max-w-[90%] rounded-lg border border-l-2 border-[var(--color-border)] bg-[var(--color-elevated)]
+													{sb.resolved ? 'border-l-emerald-500/60' : 'border-l-amber-500/60'}"
+											>
+												<div class="px-3 py-2">
+													<div
+														class="mb-2 flex items-center gap-1.5 text-xs font-medium text-amber-400"
+													>
+														<svg
+															class="h-3.5 w-3.5 shrink-0"
+															fill="none"
+															stroke="currentColor"
+															viewBox="0 0 24 24"
+															stroke-width="1.5"
+														>
+															<path
+																stroke-linecap="round"
+																stroke-linejoin="round"
+																d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+															/>
+														</svg>
+														Sandbox blocked writes to:
+													</div>
+													{#each sb.paths as displayPath, i}
+														<div class="mb-1 font-mono text-xs text-[var(--color-text-primary)]">
+															{displayPath}
+														</div>
+														{#if !sb.resolved}
+															<div class="mb-2 flex items-center gap-2">
+																<button
+																	onclick={() => handleAllowPath(sb.absolutePaths[i], displayPath)}
+																	class="rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-emerald-500"
+																>
+																	Allow {displayPath}
+																</button>
+															</div>
+														{/if}
+													{/each}
+													{#if sb.resolved}
+														<span class="text-xs font-medium text-emerald-400">
+															Path allowed. Re-run the command for it to take effect.
 														</span>
 													{/if}
 												</div>

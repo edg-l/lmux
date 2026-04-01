@@ -9,6 +9,8 @@ import { requestApproval, cleanupApproval } from '$lib/server/approval-store';
 import { detectDangerousPatterns } from '$lib/server/danger-detect';
 import { isLandlockAvailable } from '$lib/server/sandbox';
 import { getProject } from '$lib/server/projects';
+import { isCommandApproved } from '$lib/server/sandbox-rules';
+import { homedir } from 'node:os';
 
 interface ChatMessage {
 	role: string;
@@ -159,42 +161,58 @@ export const POST: RequestHandler = async ({ request }) => {
 							let fileChanged:
 								| { path: string; operation: 'created' | 'modified'; oldContent?: string }
 								| undefined;
+							let blockedPaths: string[] = [];
 
 							// Approval flow for run_command
 							if (tc.function.name === 'run_command' && typeof args.command === 'string') {
 								const command = args.command;
-								const dangers = detectDangerousPatterns(command);
-								const requestId = crypto.randomUUID();
-								pendingApprovalIds.push(requestId);
+								const autoApproved = isCommandApproved(command);
 
-								controller.enqueue(
-									new TextEncoder().encode(
-										sseEvent(
-											JSON.stringify({
-												type: 'approval_request',
-												requestId,
-												command,
-												dangers,
-												sandboxed: isLandlockAvailable()
-											})
+								if (!autoApproved) {
+									const dangers = detectDangerousPatterns(command);
+									const requestId = crypto.randomUUID();
+									pendingApprovalIds.push(requestId);
+
+									controller.enqueue(
+										new TextEncoder().encode(
+											sseEvent(
+												JSON.stringify({
+													type: 'approval_request',
+													requestId,
+													command,
+													dangers,
+													sandboxed: isLandlockAvailable()
+												})
+											)
 										)
-									)
-								);
+									);
 
-								const approvalResult = await requestApproval(requestId);
-								// Remove from pending list after resolution
-								const idx = pendingApprovalIds.indexOf(requestId);
-								if (idx !== -1) pendingApprovalIds.splice(idx, 1);
+									const approvalResult = await requestApproval(requestId, command);
+									// Remove from pending list after resolution
+									const idx = pendingApprovalIds.indexOf(requestId);
+									if (idx !== -1) pendingApprovalIds.splice(idx, 1);
 
-								if (approvalResult === 'timeout') {
-									toolResult = 'Command approval timed out';
-								} else if (approvalResult === 'denied') {
-									toolResult = 'Command denied by user';
+									if (approvalResult === 'timeout') {
+										toolResult = 'Command approval timed out';
+									} else if (approvalResult === 'denied') {
+										toolResult = 'Command denied by user';
+									} else {
+										try {
+											const execResult = await executeTool(tc.function.name, args, project);
+											toolResult = execResult.result;
+											fileChanged = execResult.fileChanged;
+											blockedPaths = execResult.blockedPaths ?? [];
+										} catch (e) {
+											toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
+										}
+									}
 								} else {
+									// Auto-approved command
 									try {
 										const execResult = await executeTool(tc.function.name, args, project);
 										toolResult = execResult.result;
 										fileChanged = execResult.fileChanged;
+										blockedPaths = execResult.blockedPaths ?? [];
 									} catch (e) {
 										toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
 									}
@@ -207,6 +225,25 @@ export const POST: RequestHandler = async ({ request }) => {
 								} catch (e) {
 									toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
 								}
+							}
+
+							// Emit sandbox_blocked event if paths were blocked
+							if (blockedPaths.length > 0) {
+								const home = homedir();
+								const displayPaths = blockedPaths.map((p) =>
+									p.startsWith(home) ? '~' + p.slice(home.length) : p
+								);
+								controller.enqueue(
+									new TextEncoder().encode(
+										sseEvent(
+											JSON.stringify({
+												type: 'sandbox_blocked',
+												paths: displayPaths,
+												absolutePaths: blockedPaths
+											})
+										)
+									)
+								);
 							}
 
 							if (fileChanged) {

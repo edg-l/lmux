@@ -1,4 +1,5 @@
-import { buildSandboxedCommand } from '../sandbox';
+import { buildSandboxedCommand, parsePermissionDeniedPaths } from '../sandbox';
+import { getWritablePaths } from '../sandbox-rules';
 
 const MAX_TIMEOUT = 300_000;
 const DEFAULT_MAX_LENGTH = 8192;
@@ -6,12 +7,13 @@ const DEFAULT_MAX_LENGTH = 8192;
 export async function runProjectCommand(
 	args: { command: string; timeout?: number; offset?: number; max_length?: number },
 	projectRoot: string
-): Promise<string> {
+): Promise<{ output: string; blockedPaths: string[] }> {
 	const timeoutMs = Math.min(Math.max((args.timeout ?? 30) * 1000, 1000), MAX_TIMEOUT);
 	const maxLength = args.max_length ?? DEFAULT_MAX_LENGTH;
 	const offset = args.offset ?? 0;
 
-	const { args: cmdArgs } = buildSandboxedCommand(projectRoot, args.command);
+	const extraWritablePaths = getWritablePaths();
+	const { args: cmdArgs } = buildSandboxedCommand(projectRoot, args.command, extraWritablePaths);
 
 	const proc = Bun.spawn(cmdArgs, {
 		cwd: projectRoot,
@@ -36,7 +38,7 @@ export async function runProjectCommand(
 		new Response(proc.stdout).text(),
 		new Response(proc.stderr).text()
 	]);
-	await proc.exited;
+	const exitCode = await proc.exited;
 	clearTimeout(timer);
 
 	let output = stdout + (stderr ? '\n' + stderr : '');
@@ -48,9 +50,13 @@ export async function runProjectCommand(
 	const totalBytes = output.length;
 	const sliced = output.slice(offset, offset + maxLength);
 
+	let finalOutput = sliced;
 	if (sliced.length < totalBytes - offset) {
-		return sliced + `\n[truncated, ${totalBytes} bytes total. Use offset/max_length to read more]`;
+		finalOutput =
+			sliced + `\n[truncated, ${totalBytes} bytes total. Use offset/max_length to read more]`;
 	}
 
-	return sliced;
+	const blockedPaths = exitCode !== 0 ? parsePermissionDeniedPaths(output) : [];
+
+	return { output: finalOutput, blockedPaths };
 }
