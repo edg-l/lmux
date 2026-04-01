@@ -66,11 +66,9 @@
 				},
 				code({ text, lang }) {
 					const trimmed = text.replace(/\s+$/, '');
-					const raw = trimmed.replace(/<[^>]+>/g, '');
-					const escaped = raw.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 					const lines = trimmed.split('\n').map((line) => `<span class="line">${line || ' '}</span>`).join('');
-					const header = `<div class="code-header"><span class="code-lang">${lang || ''}</span><button class="code-copy" onclick="(function(b){var t=b.closest('.code-block').querySelector('code');var r=t.innerText;navigator.clipboard.writeText(r);b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},1500)})(this)">Copy</button></div>`;
-					return `<div class="code-block">${header}<pre class="code-content"><code class="hljs${lang ? ` language-${lang}` : ''}" data-raw="${escaped}">${lines}</code></pre></div>`;
+					const header = `<div class="code-header"><span class="code-lang">${lang || ''}</span><button class="code-copy">Copy</button></div>`;
+					return `<div class="code-block">${header}<pre class="code-content"><code class="hljs${lang ? ` language-${lang}` : ''}">${lines}</code></pre></div>`;
 				}
 			}
 		}
@@ -1000,6 +998,28 @@
 		) {
 			isLaunching = false;
 		}
+	});
+
+	// Attach click handlers to code copy buttons after render
+	$effect(() => {
+		// Re-run whenever messages change
+		void messages.length;
+		tick().then(() => {
+			document.querySelectorAll('.code-copy').forEach((btn) => {
+				if (btn.getAttribute('data-wired')) return;
+				btn.setAttribute('data-wired', '1');
+				btn.addEventListener('click', () => {
+					const block = btn.closest('.code-block');
+					const code = block?.querySelector('code');
+					if (!code) return;
+					const raw = code.innerText;
+					navigator.clipboard.writeText(raw).then(() => {
+						btn.textContent = 'Copied!';
+						setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+					});
+				});
+			});
+		});
 	});
 
 	async function launchModel(modelId: number) {
