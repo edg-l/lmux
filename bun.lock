@@ -9,7 +9,6 @@
         "dompurify": "^3.3.3",
         "katex": "^0.16.44",
         "marked": "^17.0.5",
-        "migralite": "^1.2.0",
       },
       "devDependencies": {
         "@eslint/compat": "^2.0.3",
@@ -462,8 +461,6 @@
     "magic-string": ["magic-string@0.30.21", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.5" } }, "sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ=="],
 
     "marked": ["marked@17.0.5", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-6hLvc0/JEbRjRgzI6wnT2P1XuM1/RrrDEX0kPt0N7jGm1133g6X7DlxFasUIx+72aKAr904GTxhSLDrd5DIlZg=="],
-
-    "migralite": ["migralite@1.2.0", "", { "peerDependencies": { "typescript": "5.9.3" }, "bin": { "migralite": "cli.ts" } }, "sha512-zNDysmuoXmVONzF6FeVLkE4/zBacHILl78WAaO8eQ7+1xbhy0J3gj3ENnerntHKyet55sNN/hrEofQJWkGuvNw=="],
 
     "mini-svg-data-uri": ["mini-svg-data-uri@1.4.4", "", { "bin": { "mini-svg-data-uri": "cli.js" } }, "sha512-r9deDe9p5FJUPZAk3A59wGH7Ii9YrjjWw0jmw/liSbHl2CHiyXj6FcDXDu2K3TjVAXqiJdaw3xxwlZZr9E6nHg=="],
 
