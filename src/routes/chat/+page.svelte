@@ -58,7 +58,14 @@
 				}
 				return code;
 			}
-		})
+		}),
+		{
+			renderer: {
+				link({ href, text }) {
+					return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+				}
+			}
+		}
 	);
 
 	interface ToolCallData {
@@ -912,6 +919,8 @@
 				'math'
 			],
 			ADD_ATTR: [
+				'target',
+				'rel',
 				'xmlns',
 				'mathvariant',
 				'stretchy',
@@ -2092,7 +2101,7 @@
 										</div>
 									{:else}
 										<div
-											class="chat-message rounded-2xl rounded-bl-sm border border-[var(--color-border)] bg-[var(--color-elevated)] px-4 py-3"
+											class="chat-message assistant-content rounded-2xl rounded-bl-sm border border-[var(--color-border)] bg-[var(--color-elevated)] px-4 py-3"
 										>
 											{@html renderMarkdown(segment.content)}
 										</div>
@@ -2277,6 +2286,16 @@
 </div>
 
 <style>
+	:global(.assistant-content a) {
+		color: var(--color-accent);
+		text-decoration: underline;
+		text-decoration-color: var(--color-accent);
+		text-underline-offset: 2px;
+		text-decoration-thickness: 1px;
+	}
+	:global(.assistant-content a:hover) {
+		text-decoration-thickness: 2px;
+	}
 	.sampling-range {
 		-webkit-appearance: none;
 		appearance: none;
