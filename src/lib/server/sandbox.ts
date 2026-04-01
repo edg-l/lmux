@@ -1,3 +1,6 @@
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
 let landLockAvailable: boolean | null = null;
 let bashPath: string = '/bin/bash';
 
@@ -23,6 +26,8 @@ export function buildSandboxedCommand(
 				projectPath,
 				'-rw',
 				'/tmp',
+				'-rw',
+				join(homedir(), '.gnupg'),
 				'-rwfiles',
 				'/dev/null',
 				'--',
