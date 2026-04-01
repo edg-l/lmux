@@ -10,6 +10,8 @@
 	let saving = $state<Record<string, boolean>>({});
 	let saved = $state<Record<string, boolean>>({});
 	let detectingBinary = $state(false);
+	let searxngStatus: 'idle' | 'checking' | 'ok' | 'error' = $state('idle');
+	let searxngError = $state('');
 
 	async function loadSettings() {
 		loading = true;
@@ -59,6 +61,30 @@
 			}
 		} finally {
 			detectingBinary = false;
+		}
+	}
+
+	async function testSearxng() {
+		if (!searxngUrl.trim()) return;
+		searxngStatus = 'checking';
+		searxngError = '';
+		try {
+			const res = await fetch('/api/settings/test-searxng', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ url: searxngUrl })
+			});
+			const data = await res.json();
+			if (res.ok && data.ok) {
+				searxngStatus = 'ok';
+				setTimeout(() => (searxngStatus = 'idle'), 3000);
+			} else {
+				searxngStatus = 'error';
+				searxngError = data.error ?? 'Unknown error';
+			}
+		} catch {
+			searxngStatus = 'error';
+			searxngError = 'Failed to connect';
 		}
 	}
 
@@ -205,6 +231,26 @@
 						class="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
 					/>
 					<button
+						onclick={testSearxng}
+						disabled={searxngStatus === 'checking' || !searxngUrl.trim()}
+						class="rounded-md border px-3 py-2 text-xs font-medium transition-colors disabled:opacity-50 {searxngStatus ===
+						'ok'
+							? 'border-emerald-500/30 text-emerald-400'
+							: searxngStatus === 'error'
+								? 'border-red-500/30 text-red-400'
+								: 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)]/30 hover:text-[var(--color-accent)]'}"
+					>
+						{#if searxngStatus === 'checking'}
+							Testing...
+						{:else if searxngStatus === 'ok'}
+							OK
+						{:else if searxngStatus === 'error'}
+							Failed
+						{:else}
+							Test
+						{/if}
+					</button>
+					<button
 						onclick={() => saveSetting('searxng_url', searxngUrl)}
 						disabled={saving['searxng_url']}
 						class="rounded-md border bg-transparent px-3 py-2 text-xs font-medium transition-colors disabled:opacity-50 {saveButtonClass(
@@ -214,6 +260,9 @@
 						{saveButtonLabel('searxng_url')}
 					</button>
 				</div>
+				{#if searxngStatus === 'error' && searxngError}
+					<p class="mt-2 text-xs text-red-400">{searxngError}</p>
+				{/if}
 			</div>
 
 			<HardwareInfo />
