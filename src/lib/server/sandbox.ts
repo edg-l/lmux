@@ -1,8 +1,10 @@
 let landLockAvailable: boolean | null = null;
+let bashPath: string = '/bin/bash';
 
 export function isLandlockAvailable(): boolean {
 	if (landLockAvailable === null) {
 		landLockAvailable = !!Bun.which('landlock-restrict');
+		bashPath = Bun.which('bash') ?? '/bin/bash';
 	}
 	return landLockAvailable;
 }
@@ -22,7 +24,7 @@ export function buildSandboxedCommand(
 				'-rw',
 				'/tmp',
 				'--',
-				'bash',
+				bashPath,
 				'-c',
 				command
 			],
