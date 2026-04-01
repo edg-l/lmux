@@ -14,6 +14,7 @@
 	let detectingBinary = $state(false);
 	let searxngStatus: 'idle' | 'checking' | 'ok' | 'error' = $state('idle');
 	let searxngError = $state('');
+	let landlockAvailable: boolean | null = $state(null);
 
 	async function loadSettings() {
 		loading = true;
@@ -103,9 +104,22 @@
 		return 'border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-border-active)] hover:text-[var(--color-text-primary)]';
 	}
 
+	async function checkLandlock() {
+		try {
+			const res = await fetch('/api/settings/check-landlock');
+			if (res.ok) {
+				const data = await res.json();
+				landlockAvailable = data.available;
+			}
+		} catch {
+			landlockAvailable = false;
+		}
+	}
+
 	import { onMount } from 'svelte';
 	onMount(() => {
 		loadSettings();
+		checkLandlock();
 	});
 </script>
 
@@ -339,6 +353,36 @@
 				</div>
 				{#if searxngStatus === 'error' && searxngError}
 					<p class="mt-2 text-xs text-red-400">{searxngError}</p>
+				{/if}
+			</div>
+
+			<!-- Landlock Sandbox Status -->
+			<div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+				<div class="mb-1 flex items-center gap-2">
+					<h2 class="text-xs font-semibold text-[var(--color-text-primary)]">
+						Sandbox (landlock-restrict)
+					</h2>
+					{#if landlockAvailable === null}
+						<span class="text-xs text-[var(--color-text-muted)]">Checking...</span>
+					{:else if landlockAvailable}
+						<span class="text-xs text-emerald-400">Detected</span>
+					{:else}
+						<span class="text-xs text-amber-400">Not found</span>
+					{/if}
+				</div>
+				<p class="mb-2 text-xs text-[var(--color-text-muted)]">
+					Used to sandbox shell commands in project mode. Restricts writes to the project directory
+					only.
+				</p>
+				{#if landlockAvailable === false}
+					<div class="rounded border border-amber-500/20 bg-amber-500/5 p-2 text-xs text-amber-300">
+						<p class="mb-1 font-medium">Install landlock-restrict:</p>
+						<code class="text-[0.7rem]">cargo install landlock-restrict</code>
+						<p class="mt-1 text-[var(--color-text-muted)]">
+							Requires Linux 5.13+ with Landlock enabled. Commands will run unsandboxed until
+							installed.
+						</p>
+					</div>
 				{/if}
 			</div>
 

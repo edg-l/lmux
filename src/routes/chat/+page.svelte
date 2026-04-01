@@ -66,7 +66,10 @@
 				},
 				code({ text, lang }) {
 					const trimmed = text.replace(/\s+$/, '');
-					const lines = trimmed.split('\n').map((line) => `<span class="line">${line || ' '}</span>`).join('');
+					const lines = trimmed
+						.split('\n')
+						.map((line) => `<span class="line">${line || ' '}</span>`)
+						.join('');
 					const header = `<div class="code-header"><span class="code-lang">${lang || ''}</span><button class="code-copy">Copy</button></div>`;
 					return `<div class="code-block">${header}<pre class="code-content"><code class="hljs${lang ? ` language-${lang}` : ''}">${lines}</code></pre></div>`;
 				}
@@ -1015,7 +1018,9 @@
 					const raw = code.innerText;
 					navigator.clipboard.writeText(raw).then(() => {
 						btn.textContent = 'Copied!';
-						setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+						setTimeout(() => {
+							btn.textContent = 'Copy';
+						}, 1500);
 					});
 				});
 			});
@@ -1896,10 +1901,7 @@
 		{/if}
 
 		<!-- Messages -->
-		<div
-			bind:this={messagesContainer}
-			class="flex-1 overflow-y-auto px-4 py-6"
-		>
+		<div bind:this={messagesContainer} class="flex-1 overflow-y-auto px-4 py-6">
 			{#if messages.length === 0}
 				<div class="flex h-full flex-col items-center justify-center">
 					{#if serverInfo?.status === 'ready' && serverInfo.modelName}
@@ -2003,7 +2005,7 @@
 								}
 							})()}
 							<div
-								class="max-w-[90%] rounded-lg border border-[var(--color-border)] border-l-2 border-l-cyan-500/40 bg-[var(--color-elevated)]"
+								class="max-w-[90%] rounded-lg border border-l-2 border-[var(--color-border)] border-l-cyan-500/40 bg-[var(--color-elevated)]"
 							>
 								<button
 									onclick={() => toggleTool(idx)}
@@ -2078,10 +2080,12 @@
 									if (msg.toolName === 'fetch_url' && args.url) return args.url;
 									if (msg.toolName === 'web_search' && args.query) return `"${args.query}"`;
 									return '';
-								} catch { return ''; }
+								} catch {
+									return '';
+								}
 							})()}
 							<div
-								class="max-w-[90%] rounded-lg border border-[var(--color-border)] border-l-2 border-l-cyan-500/40 bg-[var(--color-elevated)]"
+								class="max-w-[90%] rounded-lg border border-l-2 border-[var(--color-border)] border-l-cyan-500/40 bg-[var(--color-elevated)]"
 							>
 								<button
 									onclick={() => toggleTool(idx)}
@@ -2115,7 +2119,9 @@
 										>{msg.toolName ?? 'Tool result'}</span
 									>
 									{#if toolSummary}
-										<span class="min-w-0 truncate text-xs text-[var(--color-text-muted)]">{toolSummary}</span>
+										<span class="min-w-0 truncate text-xs text-[var(--color-text-muted)]"
+											>{toolSummary}</span
+										>
 									{/if}
 									<svg
 										class="h-3 w-3 shrink-0 text-emerald-400"

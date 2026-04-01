@@ -5,6 +5,10 @@ import { getToolDefinitions, executeTool } from '$lib/server/tools';
 import { consumeLlamaStream } from '$lib/server/tools/llama-stream';
 import type { ToolCall } from '$lib/server/tools/llama-stream';
 import { resolveSystemPrompt } from '$lib/server/system-prompt';
+import { requestApproval, cleanupApproval } from '$lib/server/approval-store';
+import { detectDangerousPatterns } from '$lib/server/danger-detect';
+import { isLandlockAvailable } from '$lib/server/sandbox';
+import { getProject } from '$lib/server/projects';
 
 interface ChatMessage {
 	role: string;
@@ -41,6 +45,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		};
 		tools_enabled?: boolean;
 		model_id?: number | null;
+		project_id?: number | null;
 	};
 
 	if (!body.messages || !Array.isArray(body.messages)) {
@@ -51,13 +56,15 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	const toolsEnabled = body.tools_enabled !== false && getSetting('tools_enabled') !== 'false';
-	const tools = toolsEnabled ? getToolDefinitions() : [];
+	const project = body.project_id ? (getProject(body.project_id) ?? undefined) : undefined;
+	const tools = toolsEnabled ? getToolDefinitions(project) : [];
 
 	const resolvedModelId = body.model_id ?? state.modelId ?? null;
-	const systemPrompt = resolveSystemPrompt(resolvedModelId);
+	const systemPrompt = resolveSystemPrompt(resolvedModelId, project);
 
 	const stream = new ReadableStream({
 		async start(controller) {
+			const pendingApprovalIds: string[] = [];
 			try {
 				// Ensure all tool_calls have type: "function" (history from DB may lack it)
 				const normalized = body.messages.map((m) => {
@@ -149,10 +156,69 @@ export const POST: RequestHandler = async ({ request }) => {
 							}
 
 							let toolResult: string;
-							try {
-								toolResult = await executeTool(tc.function.name, args);
-							} catch (e) {
-								toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
+							let fileChanged: { path: string; operation: 'created' | 'modified' } | undefined;
+
+							// Approval flow for run_command
+							if (tc.function.name === 'run_command' && typeof args.command === 'string') {
+								const command = args.command;
+								const dangers = detectDangerousPatterns(command);
+								const requestId = crypto.randomUUID();
+								pendingApprovalIds.push(requestId);
+
+								controller.enqueue(
+									new TextEncoder().encode(
+										sseEvent(
+											JSON.stringify({
+												type: 'approval_request',
+												requestId,
+												command,
+												dangers,
+												sandboxed: isLandlockAvailable()
+											})
+										)
+									)
+								);
+
+								const approvalResult = await requestApproval(requestId);
+								// Remove from pending list after resolution
+								const idx = pendingApprovalIds.indexOf(requestId);
+								if (idx !== -1) pendingApprovalIds.splice(idx, 1);
+
+								if (approvalResult === 'timeout') {
+									toolResult = 'Command approval timed out';
+								} else if (approvalResult === 'denied') {
+									toolResult = 'Command denied by user';
+								} else {
+									try {
+										const execResult = await executeTool(tc.function.name, args, project);
+										toolResult = execResult.result;
+										fileChanged = execResult.fileChanged;
+									} catch (e) {
+										toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
+									}
+								}
+							} else {
+								try {
+									const execResult = await executeTool(tc.function.name, args, project);
+									toolResult = execResult.result;
+									fileChanged = execResult.fileChanged;
+								} catch (e) {
+									toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
+								}
+							}
+
+							if (fileChanged) {
+								controller.enqueue(
+									new TextEncoder().encode(
+										sseEvent(
+											JSON.stringify({
+												type: 'file_changed',
+												path: fileChanged.path,
+												operation: fileChanged.operation
+											})
+										)
+									)
+								);
 							}
 
 							controller.enqueue(
@@ -229,6 +295,9 @@ export const POST: RequestHandler = async ({ request }) => {
 					)
 				);
 			} finally {
+				for (const id of pendingApprovalIds) {
+					cleanupApproval(id);
+				}
 				controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
 				controller.close();
 			}

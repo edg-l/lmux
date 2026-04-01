@@ -5,6 +5,7 @@ export interface Conversation {
 	title: string | null;
 	model_id: number | null;
 	model_name: string | null;
+	project_id: number | null;
 	tags: string;
 	created_at: string;
 	updated_at: string;
@@ -44,12 +45,23 @@ export interface Message {
 	created_at: string;
 }
 
-export function createConversation(title?: string, modelId?: number): number {
-	const result = execute(`INSERT INTO conversations (title, model_id) VALUES ($title, $model_id)`, {
-		$title: title ?? null,
-		$model_id: modelId ?? null
-	});
+export function createConversation(title?: string, modelId?: number, projectId?: number): number {
+	const result = execute(
+		`INSERT INTO conversations (title, model_id, project_id) VALUES ($title, $model_id, $project_id)`,
+		{
+			$title: title ?? null,
+			$model_id: modelId ?? null,
+			$project_id: projectId ?? null
+		}
+	);
 	return Number(result.lastInsertRowid);
+}
+
+export function listProjectConversations(projectId: number): Conversation[] {
+	return queryAll<Conversation>(
+		'SELECT c.*, m.filename as model_name FROM conversations c LEFT JOIN models m ON c.model_id = m.id WHERE c.project_id = $project_id ORDER BY c.updated_at DESC',
+		{ $project_id: projectId }
+	);
 }
 
 export function listConversations(): Conversation[] {
