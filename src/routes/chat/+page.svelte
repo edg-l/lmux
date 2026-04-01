@@ -217,6 +217,9 @@
 	let tagInput = $state('');
 	let activeTag: string | null = $state(null);
 
+	// Toolbar overflow menu
+	let toolbarMenuOpen = $state(false);
+
 	// Feature 11: Prompt presets
 	interface PresetInfo {
 		id: number;
@@ -1276,7 +1279,7 @@
 				<div
 					class="group flex items-center border-b border-[var(--color-border)]/30 {activeConversationId ===
 					conv.id
-						? 'bg-[var(--color-accent-subtle)]'
+						? 'border-l-2 border-l-[var(--color-accent)] bg-[var(--color-accent-subtle)]'
 						: 'hover:bg-[var(--color-surface)]'}"
 				>
 					<button
@@ -1284,23 +1287,39 @@
 						class="min-w-0 flex-1 px-3 py-2 text-left"
 					>
 						<p
-							class="truncate text-xs text-[var(--color-text-secondary)] {activeConversationId ===
-							conv.id
+							class="truncate text-xs font-medium {activeConversationId === conv.id
 								? 'text-[var(--color-accent)]'
-								: ''}"
+								: 'text-[var(--color-text-primary)]'}"
 						>
 							{conv.title || 'Untitled'}
 						</p>
-						{#if conv.model_name}
-							<p class="truncate font-mono text-xs text-[var(--color-text-muted)]">
-								{conv.model_name}
-							</p>
-						{:else if conv.model_id !== null && !conv.model_name}
-							<p class="text-xs text-red-400/60">Model removed</p>
-						{/if}
-						<p class="font-mono text-xs text-[var(--color-text-muted)]">
-							{formatTime(conv.updated_at)}
-						</p>
+						<div class="mt-0.5 flex items-center gap-1.5">
+							{#if conv.model_name}
+								<span
+									class="inline-flex items-center gap-1 truncate font-mono text-[10px] text-[var(--color-accent)]/60"
+								>
+									<svg
+										class="h-2.5 w-2.5 shrink-0"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										stroke-width="1.5"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25z"
+										/>
+									</svg>
+									{conv.model_name}
+								</span>
+							{:else if conv.model_id !== null && !conv.model_name}
+								<span class="text-[10px] text-red-400/60">Model removed</span>
+							{/if}
+							<span class="font-mono text-[10px] text-[var(--color-text-muted)]">
+								{formatTime(conv.updated_at)}
+							</span>
+						</div>
 						{#if conv.tags}
 							<div class="mt-0.5 flex flex-wrap gap-0.5">
 								{#each conv.tags
@@ -1374,6 +1393,29 @@
 				<p class="px-3 py-6 text-center text-xs text-[var(--color-text-muted)]">
 					{searchQuery.trim() ? 'No matches' : 'No conversations'}
 				</p>
+			{/if}
+		</div>
+
+		<!-- Server status bar -->
+		<div class="border-t border-[var(--color-border)] px-3 py-2">
+			{#if serverInfo?.status === 'ready' && serverInfo.modelName}
+				<div class="flex items-center gap-2">
+					<span class="h-2 w-2 shrink-0 rounded-full bg-emerald-400"></span>
+					<span
+						class="truncate font-mono text-xs text-[var(--color-text-secondary)]"
+						title={serverInfo.modelName}>{serverInfo.modelName}</span
+					>
+				</div>
+			{:else if serverInfo?.status === 'starting'}
+				<div class="flex items-center gap-2">
+					<span class="h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-400"></span>
+					<span class="text-xs text-amber-400">Loading model...</span>
+				</div>
+			{:else}
+				<div class="flex items-center gap-2 rounded-md bg-red-500/10 px-2 py-1">
+					<span class="h-2 w-2 shrink-0 rounded-full bg-red-400"></span>
+					<span class="text-xs font-medium text-red-400">Server stopped</span>
+				</div>
 			{/if}
 		</div>
 	</div>
@@ -1522,94 +1564,144 @@
 				</svg>
 			</button>
 
-			<button
-				onclick={() => (samplingOpen = !samplingOpen)}
-				class="rounded p-1 transition-colors {samplingOpen
-					? 'text-[var(--color-accent)]'
-					: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
-				aria-label="Sampling parameters"
-				title="Sampling parameters"
-			>
-				<svg
-					class="h-4 w-4"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-					stroke-width="1.5"
+			<!-- Overflow menu for less-used toolbar items -->
+			<div class="relative">
+				<button
+					onclick={() => (toolbarMenuOpen = !toolbarMenuOpen)}
+					class="rounded p-1 transition-colors {toolbarMenuOpen
+						? 'text-[var(--color-accent)]'
+						: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
+					aria-label="More options"
+					title="More options"
 				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"
-					/>
-				</svg>
-			</button>
-
-			<button
-				onclick={() => (systemPromptOpen = !systemPromptOpen)}
-				class="rounded p-1 transition-colors {systemPromptOpen
-					? 'text-[var(--color-accent)]'
-					: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
-				aria-label="System prompt"
-				title="System prompt"
-			>
-				<svg
-					class="h-4 w-4"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-					stroke-width="1.5"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"
-					/>
-				</svg>
-			</button>
-
-			<button
-				onclick={() => (logsOpen = !logsOpen)}
-				class="rounded p-1 transition-colors {logsOpen
-					? 'text-[var(--color-accent)]'
-					: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
-				aria-label="Server logs"
-				title="Server logs"
-			>
-				<svg
-					class="h-4 w-4"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-					stroke-width="1.5"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"
-					/>
-				</svg>
-			</button>
-
-			<button
-				class="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
-				aria-label="Keyboard shortcuts"
-				title="Shortcuts: Ctrl+N new chat, Ctrl+Shift+S stop server, Esc cancel generation"
-			>
-				<svg
-					class="h-4 w-4"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-					stroke-width="1.5"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
-					/>
-				</svg>
-			</button>
+					<svg
+						class="h-4 w-4"
+						fill="none"
+						stroke="currentColor"
+						viewBox="0 0 24 24"
+						stroke-width="1.5"
+					>
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z"
+						/>
+					</svg>
+				</button>
+				{#if toolbarMenuOpen}
+					<div
+						class="absolute right-0 z-20 mt-1 w-48 rounded-md border border-[var(--color-border)] bg-[var(--color-elevated)] py-1 shadow-lg"
+					>
+						<button
+							onclick={() => {
+								samplingOpen = !samplingOpen;
+								toolbarMenuOpen = false;
+							}}
+							class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors {samplingOpen
+								? 'text-[var(--color-accent)]'
+								: 'text-[var(--color-text-secondary)]'} hover:bg-[var(--color-surface)]"
+						>
+							<svg
+								class="h-3.5 w-3.5 shrink-0"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+								stroke-width="1.5"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"
+								/>
+							</svg>
+							Sampling
+						</button>
+						<button
+							onclick={() => {
+								systemPromptOpen = !systemPromptOpen;
+								toolbarMenuOpen = false;
+							}}
+							class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors {systemPromptOpen
+								? 'text-[var(--color-accent)]'
+								: 'text-[var(--color-text-secondary)]'} hover:bg-[var(--color-surface)]"
+						>
+							<svg
+								class="h-3.5 w-3.5 shrink-0"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+								stroke-width="1.5"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"
+								/>
+							</svg>
+							System Prompt
+						</button>
+						<button
+							onclick={() => {
+								logsOpen = !logsOpen;
+								toolbarMenuOpen = false;
+							}}
+							class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors {logsOpen
+								? 'text-[var(--color-accent)]'
+								: 'text-[var(--color-text-secondary)]'} hover:bg-[var(--color-surface)]"
+						>
+							<svg
+								class="h-3.5 w-3.5 shrink-0"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+								stroke-width="1.5"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"
+								/>
+							</svg>
+							Server Logs
+						</button>
+						<div class="my-1 border-t border-[var(--color-border)]"></div>
+						<div class="px-3 py-1.5 text-xs text-[var(--color-text-muted)]">
+							<div class="flex items-center gap-2">
+								<svg
+									class="h-3.5 w-3.5 shrink-0"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+									stroke-width="1.5"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
+									/>
+								</svg>
+								Shortcuts
+							</div>
+							<div class="mt-1 space-y-0.5 pl-5.5 text-[var(--color-text-muted)]">
+								<p>
+									<kbd class="rounded bg-[var(--color-surface)] px-1 font-mono text-[10px]"
+										>Ctrl+N</kbd
+									> New chat
+								</p>
+								<p>
+									<kbd class="rounded bg-[var(--color-surface)] px-1 font-mono text-[10px]"
+										>Ctrl+Shift+S</kbd
+									> Stop server
+								</p>
+								<p>
+									<kbd class="rounded bg-[var(--color-surface)] px-1 font-mono text-[10px]">Esc</kbd
+									> Cancel generation
+								</p>
+							</div>
+						</div>
+					</div>
+				{/if}
+			</div>
 		</div>
 
 		<!-- Server Logs panel -->
@@ -1831,7 +1923,10 @@
 		{/if}
 
 		<!-- Messages -->
-		<div bind:this={messagesContainer} class="flex-1 overflow-y-auto px-4 py-6">
+		<div
+			bind:this={messagesContainer}
+			class="flex flex-1 flex-col justify-end overflow-y-auto px-4 py-6"
+		>
 			{#if messages.length === 0}
 				<div class="flex h-full flex-col items-center justify-center">
 					{#if serverInfo?.status === 'ready' && serverInfo.modelName}
@@ -1904,7 +1999,9 @@
 										<div
 											class="max-w-[85%] rounded-2xl rounded-br-sm bg-[var(--color-accent-dim)] px-4 py-2.5"
 										>
-											<p class="user-content text-sm whitespace-pre-wrap text-white">{@html linkifyText(msg.content)}</p>
+											<p class="user-content text-sm whitespace-pre-wrap text-white">
+												{@html linkifyText(msg.content)}
+											</p>
 										</div>
 										{#if msg.images && msg.images.length > 0}
 											<div class="mt-1.5 flex flex-wrap gap-2">
@@ -1932,10 +2029,12 @@
 									return '';
 								}
 							})()}
-							<div class="max-w-[90%] rounded-lg border-l-2 border-cyan-500/40 bg-cyan-500/5">
+							<div
+								class="ml-4 max-w-[85%] rounded-md border-l-2 border-cyan-500/30 bg-[var(--color-base)]/60"
+							>
 								<button
 									onclick={() => toggleTool(idx)}
-									class="flex w-full items-center gap-2 px-3 py-2 text-left"
+									class="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
 								>
 									<svg
 										class="h-3 w-3 shrink-0 text-cyan-400 transition-transform {isExpanded
@@ -1949,7 +2048,7 @@
 										<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
 									</svg>
 									<svg
-										class="h-3.5 w-3.5 shrink-0 text-cyan-400"
+										class="h-3 w-3 shrink-0 text-cyan-400/70"
 										fill="none"
 										stroke="currentColor"
 										viewBox="0 0 24 24"
@@ -1961,7 +2060,7 @@
 											d="M11.42 15.17l-5.09-5.09a3.004 3.004 0 010-4.25 3.004 3.004 0 014.25 0l.34.34.34-.34a3.004 3.004 0 014.25 0 3.004 3.004 0 010 4.25l-5.09 5.09zM21.17 8.04l-4.25-4.25a2 2 0 00-2.83 0L12 5.88l-2.09-2.09a2 2 0 00-2.83 0L2.83 8.04a2 2 0 000 2.83L12 20l9.17-9.13a2 2 0 000-2.83z"
 										/>
 									</svg>
-									<span class="text-xs font-medium text-cyan-400">{msg.toolName ?? 'tool'}</span>
+									<span class="text-xs font-medium text-cyan-400/80">{msg.toolName ?? 'tool'}</span>
 									{#if toolSummary}
 										<span class="min-w-0 truncate text-xs text-[var(--color-text-muted)]"
 											>{toolSummary}</span
@@ -1982,7 +2081,7 @@
 									{/if}
 								</button>
 								{#if isExpanded}
-									<div class="space-y-1 border-t border-cyan-500/10 px-3 py-2">
+									<div class="space-y-1 border-t border-cyan-500/10 px-2.5 py-1.5">
 										{#if msg.toolArgs}
 											<p class="font-mono text-xs break-all text-cyan-300/60">
 												{msg.toolArgs}
@@ -2000,10 +2099,12 @@
 							</div>
 						{:else if msg.role === 'tool'}
 							{@const isExpanded = expandedTools.has(idx)}
-							<div class="max-w-[90%] rounded-lg border-l-2 border-cyan-500/40 bg-cyan-500/5">
+							<div
+								class="ml-4 max-w-[85%] rounded-md border-l-2 border-cyan-500/30 bg-[var(--color-base)]/60"
+							>
 								<button
 									onclick={() => toggleTool(idx)}
-									class="flex w-full items-center gap-2 px-3 py-2 text-left"
+									class="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
 								>
 									<svg
 										class="h-3 w-3 shrink-0 text-cyan-400 transition-transform {isExpanded
@@ -2017,7 +2118,7 @@
 										<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
 									</svg>
 									<svg
-										class="h-3.5 w-3.5 shrink-0 text-cyan-400"
+										class="h-3 w-3 shrink-0 text-cyan-400/70"
 										fill="none"
 										stroke="currentColor"
 										viewBox="0 0 24 24"
@@ -2029,7 +2130,7 @@
 											d="M11.42 15.17l-5.09-5.09a3.004 3.004 0 010-4.25 3.004 3.004 0 014.25 0l.34.34.34-.34a3.004 3.004 0 014.25 0 3.004 3.004 0 010 4.25l-5.09 5.09zM21.17 8.04l-4.25-4.25a2 2 0 00-2.83 0L12 5.88l-2.09-2.09a2 2 0 00-2.83 0L2.83 8.04a2 2 0 000 2.83L12 20l9.17-9.13a2 2 0 000-2.83z"
 										/>
 									</svg>
-									<span class="text-xs font-medium text-cyan-400"
+									<span class="text-xs font-medium text-cyan-400/80"
 										>{msg.toolName ?? 'Tool result'}</span
 									>
 									<svg
@@ -2043,7 +2144,7 @@
 									</svg>
 								</button>
 								{#if isExpanded}
-									<div class="space-y-1 border-t border-cyan-500/10 px-3 py-2">
+									<div class="space-y-1 border-t border-cyan-500/10 px-2.5 py-1.5">
 										{#if msg.toolArgs}
 											<p class="font-mono text-xs break-all text-cyan-300/60">
 												{msg.toolArgs}
@@ -2070,30 +2171,6 @@
 											<span class="h-2 w-2 rounded-full bg-[var(--color-text-muted)]"></span>
 											<span class="h-2 w-2 rounded-full bg-[var(--color-text-muted)]"></span>
 										</span>
-									</div>
-								{/if}
-								{#if msg.tool_calls && msg.tool_calls.length > 0}
-									<div class="flex flex-wrap gap-1">
-										{#each msg.tool_calls as tc}
-											<span
-												class="inline-flex items-center gap-1 rounded-full border border-cyan-500/20 bg-cyan-500/5 px-2 py-0.5 text-xs text-cyan-400"
-											>
-												<svg
-													class="h-3 w-3"
-													fill="none"
-													stroke="currentColor"
-													viewBox="0 0 24 24"
-													stroke-width="1.5"
-												>
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														d="M11.42 15.17l-5.09-5.09a3.004 3.004 0 010-4.25 3.004 3.004 0 014.25 0l.34.34.34-.34a3.004 3.004 0 014.25 0 3.004 3.004 0 010 4.25l-5.09 5.09z"
-													/>
-												</svg>
-												{tc.function.name}
-											</span>
-										{/each}
 									</div>
 								{/if}
 								{#each isWaiting ? [] : segments as segment, segIdx}
