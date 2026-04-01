@@ -104,12 +104,32 @@
 	let toolsEnabled = $state(true);
 	let expandedTools = $state<Set<number>>(new Set());
 
+	// Feature 1: Conversation search
+	let searchQuery = $state('');
+	let filteredConversations = $derived(
+		searchQuery.trim()
+			? conversations.filter((c) =>
+					(c.title ?? '').toLowerCase().includes(searchQuery.trim().toLowerCase())
+				)
+			: conversations
+	);
+
+	// Feature 2: Export chat
+	let exportOpen = $state(false);
+
+	// Feature 3: Token counter
+	let inputTokenEstimate = $derived(Math.ceil(input.length / 4));
+
 	onMount(() => {
 		loadConversations();
 		loadToolsEnabled();
 		loadAvailableModels();
 		const cleanupServerInfo = loadServerInfo();
-		return () => cleanupServerInfo();
+		document.addEventListener('keydown', handleGlobalKeydown);
+		return () => {
+			cleanupServerInfo();
+			document.removeEventListener('keydown', handleGlobalKeydown);
+		};
 	});
 
 	async function loadAvailableModels() {
@@ -823,6 +843,55 @@
 		}
 		expandedThinking = next;
 	}
+
+	function exportChat(format: 'markdown' | 'json') {
+		if (!activeConversation) return;
+		const chatMessages = messages.filter((m) => m.role === 'user' || m.role === 'assistant');
+		let content: string;
+		let ext: string;
+		let mimeType: string;
+
+		if (format === 'markdown') {
+			content = chatMessages
+				.map((m) => `## ${m.role === 'user' ? 'User' : 'Assistant'}\n\n${m.content}\n`)
+				.join('\n');
+			ext = 'md';
+			mimeType = 'text/markdown';
+		} else {
+			content = JSON.stringify(chatMessages, null, 2);
+			ext = 'json';
+			mimeType = 'application/json';
+		}
+
+		const blob = new Blob([content], { type: mimeType });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `chat-${activeConversationId}-${Date.now()}.${ext}`;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+		exportOpen = false;
+	}
+
+	function handleGlobalKeydown(e: KeyboardEvent) {
+		const target = e.target as HTMLElement;
+		const tagName = target.tagName.toLowerCase();
+		// Allow shortcuts from our chat textarea, but skip other inputs/textareas
+		if ((tagName === 'input' || tagName === 'textarea') && target !== textareaEl) return;
+
+		if (e.ctrlKey && !e.shiftKey && e.key === 'n') {
+			e.preventDefault();
+			newConversation();
+		} else if (e.ctrlKey && e.shiftKey && (e.key === 'S' || e.key === 's')) {
+			e.preventDefault();
+			fetch('/api/server/stop', { method: 'POST' });
+		} else if (e.key === 'Escape' && streaming) {
+			e.preventDefault();
+			stopGeneration();
+		}
+	}
 </script>
 
 <div class="-m-5 flex h-screen md:-m-8">
@@ -843,8 +912,17 @@
 			>
 		</div>
 
+		<div class="px-2 py-1.5">
+			<input
+				type="text"
+				bind:value={searchQuery}
+				placeholder="Search..."
+				class="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
+			/>
+		</div>
+
 		<div class="flex-1 overflow-y-auto">
-			{#each conversations as conv}
+			{#each filteredConversations as conv}
 				<div
 					class="group flex items-center border-b border-[var(--color-border)]/30 {activeConversationId ===
 					conv.id
@@ -892,8 +970,10 @@
 					{/if}
 				</div>
 			{/each}
-			{#if conversations.length === 0}
-				<p class="px-3 py-6 text-center text-xs text-[var(--color-text-muted)]">No conversations</p>
+			{#if filteredConversations.length === 0}
+				<p class="px-3 py-6 text-center text-xs text-[var(--color-text-muted)]">
+					{searchQuery.trim() ? 'No matches' : 'No conversations'}
+				</p>
 			{/if}
 		</div>
 	</div>
@@ -977,6 +1057,48 @@
 				</div>
 			{/if}
 
+			<!-- Export dropdown -->
+			{#if activeConversation}
+				<div class="relative">
+					<button
+						onclick={() => (exportOpen = !exportOpen)}
+						class="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
+						aria-label="Export chat"
+						title="Export chat"
+					>
+						<svg
+							class="h-4 w-4"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+							stroke-width="1.5"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+							/>
+						</svg>
+					</button>
+					{#if exportOpen}
+						<div
+							class="absolute right-0 z-10 mt-1 w-32 rounded-md border border-[var(--color-border)] bg-[var(--color-elevated)] py-1 shadow-lg"
+						>
+							<button
+								onclick={() => exportChat('markdown')}
+								class="block w-full px-3 py-1.5 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-surface)]"
+								>Export MD</button
+							>
+							<button
+								onclick={() => exportChat('json')}
+								class="block w-full px-3 py-1.5 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-surface)]"
+								>Export JSON</button
+							>
+						</div>
+					{/if}
+				</div>
+			{/if}
+
 			<button
 				onclick={toggleTools}
 				class="rounded p-1 transition-colors {toolsEnabled
@@ -1042,6 +1164,26 @@
 						stroke-linecap="round"
 						stroke-linejoin="round"
 						d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"
+					/>
+				</svg>
+			</button>
+
+			<button
+				class="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
+				aria-label="Keyboard shortcuts"
+				title="Shortcuts: Ctrl+N new chat, Ctrl+Shift+S stop server, Esc cancel generation"
+			>
+				<svg
+					class="h-4 w-4"
+					fill="none"
+					stroke="currentColor"
+					viewBox="0 0 24 24"
+					stroke-width="1.5"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
 					/>
 				</svg>
 			</button>
@@ -1469,6 +1611,13 @@
 							>Send</button
 						>
 					{/if}
+				</div>
+			{/if}
+			{#if input.length > 0}
+				<div class="mx-auto mt-1 max-w-3xl">
+					<span class="font-mono text-xs text-[var(--color-text-muted)]"
+						>~{inputTokenEstimate} tokens</span
+					>
 				</div>
 			{/if}
 			{#if tokenUsage}
