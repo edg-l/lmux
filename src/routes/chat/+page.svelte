@@ -65,11 +65,11 @@
 					return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
 				},
 				code({ text, lang }) {
-					// Count lines from raw text (strip hljs spans for accurate count)
-					const rawLines = text.replace(/<[^>]+>/g, '').split('\n');
+					const trimmed = text.replace(/\n+$/, '');
+					const rawLines = trimmed.replace(/<[^>]+>/g, '').split('\n');
 					const nums = rawLines.map((_, i) => `<span>${i + 1}</span>`).join('\n');
 					const langLabel = lang ? `<div class="code-lang">${lang}</div>` : '';
-					return `<div class="code-block">${langLabel}<div class="code-body"><div class="line-numbers" aria-hidden="true">${nums}</div><pre class="code-content"><code class="hljs${lang ? ` language-${lang}` : ''}">${text}</code></pre></div></div>`;
+					return `<div class="code-block">${langLabel}<div class="code-body"><div class="line-numbers" aria-hidden="true">${nums}</div><pre class="code-content"><code class="hljs${lang ? ` language-${lang}` : ''}">${trimmed}</code></pre></div></div>`;
 				}
 			}
 		}
