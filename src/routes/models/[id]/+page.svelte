@@ -15,6 +15,7 @@
 		flash_attn: string;
 		kv_cache_type: string;
 		extra_flags: string | null;
+		mmproj_path: string | null;
 		created_at: string;
 	}
 
@@ -31,6 +32,7 @@
 	let formFlashAttn = $state('auto');
 	let formKvCacheType = $state('q8_0');
 	let formExtraFlags = $state('');
+	let formMmprojPath = $state('');
 	let generating = $state(false);
 	let launchingId: number | null = $state(null);
 	let launchError: string | null = $state(null);
@@ -45,6 +47,7 @@
 		formFlashAttn = 'auto';
 		formKvCacheType = 'q8_0';
 		formExtraFlags = '';
+		formMmprojPath = '';
 		editingId = null;
 		showForm = false;
 	}
@@ -60,6 +63,7 @@
 		formFlashAttn = profile.flash_attn ?? 'auto';
 		formKvCacheType = profile.kv_cache_type ?? 'q8_0';
 		formExtraFlags = profile.extra_flags ?? '';
+		formMmprojPath = profile.mmproj_path ?? '';
 		showForm = true;
 	}
 
@@ -78,7 +82,8 @@
 			batch_size: formBatchSize ? parseInt(formBatchSize) : null,
 			flash_attn: formFlashAttn,
 			kv_cache_type: formKvCacheType,
-			extra_flags: formExtraFlags || null
+			extra_flags: formExtraFlags || null,
+			mmproj_path: formMmprojPath || null
 		};
 
 		if (editingId) {
@@ -506,6 +511,20 @@
 							type="text"
 							bind:value={formExtraFlags}
 							placeholder="--mlock"
+							class="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
+						/>
+					</div>
+					<div class="col-span-3">
+						<label
+							for="profile-mmproj"
+							class="mb-1.5 block text-xs font-medium text-[var(--color-text-muted)] uppercase"
+							>mmproj Path</label
+						>
+						<input
+							id="profile-mmproj"
+							type="text"
+							bind:value={formMmprojPath}
+							placeholder="/path/to/mmproj-model.gguf"
 							class="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
 						/>
 					</div>

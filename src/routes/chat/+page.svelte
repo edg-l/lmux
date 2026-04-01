@@ -18,6 +18,7 @@
 		toolName?: string;
 		toolArgs?: string;
 		toolStatus?: 'running' | 'done';
+		images?: Array<{ name: string; base64: string; dataUrl: string }>;
 	}
 
 	interface Conversation {
@@ -125,6 +126,31 @@
 	let thinkingBudgetEnabled = $state(false);
 	let thinkingBudgetValue = $state(4096);
 	let thinkingBudget = $derived(thinkingBudgetEnabled ? thinkingBudgetValue : -1);
+
+	// Feature 7: Image/Vision support
+	let pendingImages = $state<Array<{ name: string; base64: string; dataUrl: string }>>([]);
+	let imageInputEl: HTMLInputElement | undefined = $state();
+
+	function handleImageSelect(e: Event) {
+		const input = e.target as HTMLInputElement;
+		if (!input.files) return;
+		for (const file of Array.from(input.files)) {
+			if (file.size > 10 * 1024 * 1024) continue; // Skip files > 10MB
+			const reader = new FileReader();
+			reader.onload = () => {
+				const dataUrl = reader.result as string;
+				const base64 = dataUrl.split(',')[1];
+				pendingImages = [...pendingImages, { name: file.name, base64, dataUrl }];
+			};
+			reader.readAsDataURL(file);
+		}
+		// Reset input so same file can be selected again
+		input.value = '';
+	}
+
+	function removeImage(index: number) {
+		pendingImages = pendingImages.filter((_, i) => i !== index);
+	}
 
 	// Feature 3: Token counter
 	let inputTokenEstimate = $derived(Math.ceil(input.length / 4));
@@ -412,7 +438,7 @@
 
 	async function sendMessage() {
 		const text = input.trim();
-		if (!text || streaming) return;
+		if ((!text && pendingImages.length === 0) || streaming) return;
 
 		const previousActiveId = activeConversationId;
 		let conversationId: number;
@@ -445,7 +471,31 @@
 			modelError = 'Wrong model is running. Launch the correct model first.';
 			return;
 		}
-		messages = [...messages, { role: 'user', content: text }];
+		const images = [...pendingImages];
+		pendingImages = [];
+
+		// Build user message content: string if no images, multimodal array if images
+		let userContent: string | Array<Record<string, unknown>>;
+		if (images.length > 0) {
+			userContent = [
+				{ type: 'text', text },
+				...images.map((img) => ({
+					type: 'image_url',
+					image_url: { url: img.dataUrl }
+				}))
+			];
+		} else {
+			userContent = text;
+		}
+
+		messages = [
+			...messages,
+			{
+				role: 'user',
+				content: typeof userContent === 'string' ? userContent : text,
+				images: images.length > 0 ? images : undefined
+			} as Message
+		];
 		input = '';
 		await saveMessage(conversationId, 'user', text);
 		messages = [...messages, { role: 'assistant', content: '' }];
@@ -470,7 +520,18 @@
 				.slice(0, -1) // exclude empty assistant placeholder
 				.filter((m) => allowedRoles.has(m.role))
 				.map((m) => {
-					const msg: Record<string, unknown> = { role: m.role, content: m.content };
+					// Build multimodal content for messages with images
+					let content: unknown = m.content;
+					if (m.images && m.images.length > 0) {
+						content = [
+							{ type: 'text', text: m.content },
+							...m.images.map((img) => ({
+								type: 'image_url',
+								image_url: { url: img.dataUrl }
+							}))
+						];
+					}
+					const msg: Record<string, unknown> = { role: m.role, content };
 					if (m.tool_calls) msg.tool_calls = m.tool_calls;
 					if (m.tool_call_id) {
 						msg.role = 'tool';
@@ -1435,6 +1496,17 @@
 											class="max-w-[85%] rounded-2xl rounded-br-sm bg-[var(--color-accent-dim)] px-4 py-2.5"
 										>
 											<p class="text-sm whitespace-pre-wrap text-white">{msg.content}</p>
+											{#if msg.images && msg.images.length > 0}
+												<div class="mt-2 flex flex-wrap gap-1.5">
+													{#each msg.images as img (img.name)}
+														<img
+															src={img.dataUrl}
+															alt={img.name}
+															class="h-12 w-12 rounded border border-white/20 object-cover"
+														/>
+													{/each}
+												</div>
+											{/if}
 										</div>
 									</div>
 								{/if}
@@ -1702,7 +1774,54 @@
 						{/if}
 					</div>
 				{/if}
+				{#if pendingImages.length > 0}
+					<div class="mx-auto mb-2 flex max-w-3xl flex-wrap gap-2">
+						{#each pendingImages as img, i (img.name + i)}
+							<div class="relative">
+								<img
+									src={img.dataUrl}
+									alt={img.name}
+									class="h-12 w-12 rounded-md border border-[var(--color-border)] object-cover"
+								/>
+								<button
+									onclick={() => removeImage(i)}
+									class="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] leading-none text-white hover:bg-red-400"
+									aria-label="Remove image">x</button
+								>
+							</div>
+						{/each}
+					</div>
+				{/if}
+				<input
+					bind:this={imageInputEl}
+					type="file"
+					accept="image/*"
+					multiple
+					class="hidden"
+					onchange={handleImageSelect}
+				/>
 				<div class="mx-auto flex max-w-3xl gap-2">
+					<button
+						onclick={() => imageInputEl?.click()}
+						disabled={streaming || serverInfo?.status !== 'ready'}
+						class="shrink-0 self-end rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-2.5 py-2.5 text-[var(--color-text-muted)] transition-colors hover:border-[var(--color-accent)]/30 hover:text-[var(--color-text-secondary)] disabled:opacity-30"
+						title="Attach images"
+						aria-label="Attach images"
+					>
+						<svg
+							class="h-4 w-4"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+							stroke-width="1.5"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+							/>
+						</svg>
+					</button>
 					<textarea
 						bind:this={textareaEl}
 						bind:value={input}
@@ -1722,7 +1841,8 @@
 					{:else}
 						<button
 							onclick={sendMessage}
-							disabled={!input.trim() || serverInfo?.status !== 'ready'}
+							disabled={(!input.trim() && pendingImages.length === 0) ||
+								serverInfo?.status !== 'ready'}
 							class="shrink-0 self-end rounded-lg bg-[var(--color-accent-dim)] px-4 py-2.5 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent)] disabled:opacity-30"
 							>Send</button
 						>

@@ -35,6 +35,7 @@ export interface ProfileRow {
 	flash_attn: string;
 	kv_cache_type: string;
 	extra_flags: string | null;
+	mmproj_path: string | null;
 	created_at: string;
 }
 
@@ -48,6 +49,7 @@ export interface ProfileInput {
 	flash_attn?: string;
 	kv_cache_type?: string;
 	extra_flags?: string | null;
+	mmproj_path?: string | null;
 }
 
 /**
@@ -240,8 +242,8 @@ export function getProfile(profileId: number): ProfileRow | null {
 
 export function createProfile(modelId: number, profile: ProfileInput): number {
 	const result = execute(
-		`INSERT INTO profiles (model_id, name, gpu_layers, context_size, port, threads, batch_size, flash_attn, kv_cache_type, extra_flags)
-		 VALUES ($model_id, $name, $gpu_layers, $context_size, $port, $threads, $batch_size, $flash_attn, $kv_cache_type, $extra_flags)`,
+		`INSERT INTO profiles (model_id, name, gpu_layers, context_size, port, threads, batch_size, flash_attn, kv_cache_type, extra_flags, mmproj_path)
+		 VALUES ($model_id, $name, $gpu_layers, $context_size, $port, $threads, $batch_size, $flash_attn, $kv_cache_type, $extra_flags, $mmproj_path)`,
 		{
 			$model_id: modelId,
 			$name: profile.name,
@@ -252,7 +254,8 @@ export function createProfile(modelId: number, profile: ProfileInput): number {
 			$batch_size: profile.batch_size ?? null,
 			$flash_attn: profile.flash_attn ?? 'auto',
 			$kv_cache_type: profile.kv_cache_type ?? 'q8_0',
-			$extra_flags: profile.extra_flags ?? null
+			$extra_flags: profile.extra_flags ?? null,
+			$mmproj_path: profile.mmproj_path ?? null
 		}
 	);
 	return Number(result.lastInsertRowid);
@@ -262,7 +265,7 @@ export function updateProfile(profileId: number, profile: ProfileInput): void {
 	execute(
 		`UPDATE profiles SET name = $name, gpu_layers = $gpu_layers, context_size = $context_size,
 		 port = $port, threads = $threads, batch_size = $batch_size, flash_attn = $flash_attn,
-		 kv_cache_type = $kv_cache_type, extra_flags = $extra_flags WHERE id = $id`,
+		 kv_cache_type = $kv_cache_type, extra_flags = $extra_flags, mmproj_path = $mmproj_path WHERE id = $id`,
 		{
 			$id: profileId,
 			$name: profile.name,
@@ -273,7 +276,8 @@ export function updateProfile(profileId: number, profile: ProfileInput): void {
 			$batch_size: profile.batch_size ?? null,
 			$flash_attn: profile.flash_attn ?? 'auto',
 			$kv_cache_type: profile.kv_cache_type ?? 'q8_0',
-			$extra_flags: profile.extra_flags ?? null
+			$extra_flags: profile.extra_flags ?? null,
+			$mmproj_path: profile.mmproj_path ?? null
 		}
 	);
 }

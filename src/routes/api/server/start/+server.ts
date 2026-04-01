@@ -25,6 +25,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	let flashAttn: string | null = 'auto';
 	let kvCacheType: string | null = 'q8_0';
 	let extraFlags = '';
+	let mmprojPath: string | null = null;
 
 	if (body.profileId) {
 		const profile = getProfile(body.profileId);
@@ -39,6 +40,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		flashAttn = profile.flash_attn;
 		kvCacheType = profile.kv_cache_type;
 		extraFlags = profile.extra_flags ?? '';
+		mmprojPath = profile.mmproj_path ?? null;
 	}
 
 	// Resolve llama-server path
@@ -69,6 +71,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			flashAttn,
 			kvCacheType,
 			extraFlags: extraFlags || undefined,
+			mmprojPath: mmprojPath || undefined,
 			slotSavePath: kvCacheDir || undefined,
 			llamaServerPath
 		});

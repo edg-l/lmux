@@ -8,7 +8,7 @@ import { resolveSystemPrompt } from '$lib/server/system-prompt';
 
 interface ChatMessage {
 	role: string;
-	content: string;
+	content: string | Array<Record<string, unknown>>;
 	tool_calls?: ToolCall[];
 	tool_call_id?: string;
 }

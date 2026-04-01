@@ -27,6 +27,7 @@ export interface StartConfig {
 	flashAttn?: string | null;
 	kvCacheType?: string | null;
 	extraFlags?: string;
+	mmprojPath?: string;
 	slotSavePath?: string;
 	llamaServerPath: string;
 }
@@ -121,6 +122,10 @@ export async function startServer(config: StartConfig): Promise<void> {
 		}
 		if (config.kvCacheType) {
 			args.push('-ctk', config.kvCacheType, '-ctv', config.kvCacheType);
+		}
+
+		if (config.mmprojPath) {
+			args.push('--mmproj', config.mmprojPath);
 		}
 
 		if (config.extraFlags) {
