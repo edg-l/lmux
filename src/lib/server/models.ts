@@ -301,6 +301,7 @@ export async function generateDefaultProfile(modelId: number): Promise<ProfileIn
 		blockCount: 0,
 		headCount: 0,
 		headCountKV: 0,
+		kvLayerCount: 0,
 		fileSize: model.size_bytes ?? 0,
 		metadata: {}
 	};
@@ -312,6 +313,7 @@ export async function generateDefaultProfile(modelId: number): Promise<ProfileIn
 		modelInfo.blockCount = fullInfo.blockCount;
 		modelInfo.headCount = fullInfo.headCount;
 		modelInfo.headCountKV = fullInfo.headCountKV;
+		modelInfo.kvLayerCount = fullInfo.kvLayerCount;
 	} catch {
 		// Use partial info
 	}

@@ -13,18 +13,19 @@ export interface VramEstimate {
  * Estimate VRAM usage for a model at a given context length.
  *
  * - Model weights VRAM is approximately equal to the GGUF file size.
- * - KV cache per token = 2 * blockCount * (headCountKV / headCount) * embeddingLength * 2 bytes (FP16)
+ * - KV cache per token = 2 * kvLayerCount * (headCountKV / headCount) * embeddingLength * 1 byte (q8_0)
  *   The first `2 *` accounts for both K and V caches.
  *   (headCountKV / headCount) is the GQA ratio.
- *   Assumes q8_0 KV cache quantization (1 byte per element instead of 2 for FP16).
+ *   kvLayerCount = attention layers only (< blockCount for hybrid SSM models).
  */
 export function estimateVram(modelInfo: ModelInfo, contextLength: number): VramEstimate {
 	const modelVram = modelInfo.fileSize;
 
 	const gqaRatio = modelInfo.headCount > 0 ? modelInfo.headCountKV / modelInfo.headCount : 1;
 
-	// 2 * (K + V) * blockCount * gqaRatio * embeddingLength * 1 byte (q8_0)
-	const kvPerToken = 2 * modelInfo.blockCount * gqaRatio * modelInfo.embeddingLength * 1;
+	// 2 * (K + V) * kvLayerCount * gqaRatio * embeddingLength * 1 byte (q8_0)
+	// kvLayerCount = attention layers only (< blockCount for hybrid SSM models)
+	const kvPerToken = 2 * modelInfo.kvLayerCount * gqaRatio * modelInfo.embeddingLength * 1;
 
 	const kvCacheVram = kvPerToken * contextLength;
 
@@ -87,7 +88,7 @@ export function recommendContextLength(
 	if (remaining <= 0) return 0;
 
 	const gqaRatio = modelInfo.headCountKV / modelInfo.headCount;
-	const kvPerToken = 2 * modelInfo.blockCount * gqaRatio * modelInfo.embeddingLength * 1; // q8_0
+	const kvPerToken = 2 * modelInfo.kvLayerCount * gqaRatio * modelInfo.embeddingLength * 1; // q8_0
 
 	if (kvPerToken <= 0) return 0;
 

@@ -26,6 +26,7 @@ function makeLlama7bInfo(overrides?: Partial<ModelInfo>): ModelInfo {
 		blockCount: 32,
 		headCount: 32,
 		headCountKV: 8,
+		kvLayerCount: 32,
 		fileSize: 4 * GB,
 		metadata: {},
 		...overrides
@@ -42,7 +43,7 @@ describe('estimateVram', () => {
 
 	it('calculates KV cache VRAM correctly', () => {
 		const info = makeLlama7bInfo();
-		// kvPerToken = 2 * 32 * (8/32) * 4096 * 1 = 2 * 32 * 0.25 * 4096 * 1 = 65536 (q8_0: 1 byte/element)
+		// kvPerToken = 2 * kvLayerCount(32) * (8/32) * 4096 * 1 = 65536 (q8_0: 1 byte/element)
 		const kvPerToken = 2 * 32 * (8 / 32) * 4096 * 1;
 		expect(kvPerToken).toBe(65536);
 
@@ -72,6 +73,21 @@ describe('estimateVram', () => {
 		// kvPerToken = 2 * 32 * (32/32) * 4096 * 1 = 262144 (q8_0: 1 byte/element)
 		const kvPerToken = 2 * 32 * 1 * 4096 * 1;
 		expect(est.kvCacheVram).toBe(kvPerToken * 1024);
+	});
+
+	it('uses kvLayerCount for hybrid SSM models', () => {
+		// Hybrid model: 32 blocks, but only 8 attention layers (kvLayerCount=8)
+		const info = makeLlama7bInfo({ blockCount: 32, kvLayerCount: 8 });
+		const est = estimateVram(info, 4096);
+
+		// kvPerToken = 2 * 8 * (8/32) * 4096 * 1 = 16384
+		const kvPerToken = 2 * 8 * (8 / 32) * 4096 * 1;
+		expect(est.kvCacheVram).toBe(kvPerToken * 4096);
+
+		// Should be 1/4 of a non-hybrid with same blockCount
+		const nonHybrid = makeLlama7bInfo({ blockCount: 32, kvLayerCount: 32 });
+		const estNonHybrid = estimateVram(nonHybrid, 4096);
+		expect(est.kvCacheVram).toBe(estNonHybrid.kvCacheVram / 4);
 	});
 });
 

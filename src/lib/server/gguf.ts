@@ -15,6 +15,8 @@ export interface ModelInfo {
 	blockCount: number;
 	headCount: number;
 	headCountKV: number;
+	/** Number of layers that use KV cache (attention layers). Equals blockCount for non-hybrid models. */
+	kvLayerCount: number;
 	fileSize: number;
 	metadata: Record<string, unknown>;
 }
@@ -306,6 +308,14 @@ export async function getModelInfo(filepath: string): Promise<ModelInfo> {
 	const headCount = Number(metadata[`${arch}.attention.head_count`] ?? 0);
 	const headCountKV = Number(metadata[`${arch}.attention.head_count_kv`] ?? 0);
 
+	// Detect hybrid models (attention + SSM layers) via SSM metadata
+	const hasSsm = metadata[`${arch}.ssm.state_size`] != null;
+	const fullAttnInterval = Number(metadata[`${arch}.full_attention_interval`] ?? 0);
+	let kvLayerCount = blockCount;
+	if (hasSsm && fullAttnInterval > 0) {
+		kvLayerCount = Math.floor(blockCount / fullAttnInterval);
+	}
+
 	const stat = statSync(filepath);
 
 	return {
@@ -317,6 +327,7 @@ export async function getModelInfo(filepath: string): Promise<ModelInfo> {
 		blockCount,
 		headCount,
 		headCountKV,
+		kvLayerCount,
 		fileSize: stat.size,
 		metadata
 	};
