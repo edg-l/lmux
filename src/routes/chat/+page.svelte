@@ -2411,11 +2411,10 @@
 	}
 	:global(.assistant-content .code-content) {
 		margin: 0;
-		padding: 0.75rem 0.75rem 0.75rem 0;
+		padding: 0.5rem 0.75rem 0.5rem 0;
 		font-size: 0.8rem;
-		line-height: 1.5;
+		line-height: 1.4;
 		overflow-x: auto;
-		counter-reset: line;
 	}
 	:global(.assistant-content .code-content code) {
 		background: none;
