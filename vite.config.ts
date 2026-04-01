@@ -4,7 +4,8 @@ import { playwright } from '@vitest/browser-playwright';
 import { sveltekit } from '@sveltejs/kit/vite';
 
 export default defineConfig({
-	plugins: [tailwindcss(), sveltekit()],
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	plugins: [tailwindcss() as any, sveltekit() as any],
 	test: {
 		expect: { requireAssertions: true },
 		projects: [
