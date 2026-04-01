@@ -58,8 +58,9 @@ export function recommendGpuLayers(
 		return { layers: 0, offloadPercentage: 0 };
 	}
 
-	const layers = Math.min(Math.floor(usablVram / perLayerVram), modelInfo.blockCount);
-	const offloadPercentage = (layers / modelInfo.blockCount) * 100;
+	const totalLayers = modelInfo.blockCount + 1; // +1 for the output layer
+	const layers = Math.min(Math.floor(usablVram / perLayerVram), totalLayers);
+	const offloadPercentage = (layers / totalLayers) * 100;
 
 	return { layers, offloadPercentage };
 }

@@ -80,7 +80,7 @@ describe('recommendGpuLayers', () => {
 		const info = makeLlama7bInfo();
 		const result = recommendGpuLayers(info, 24 * GB, 4096);
 
-		expect(result.layers).toBe(32);
+		expect(result.layers).toBe(33); // 32 blocks + 1 output layer
 		expect(result.offloadPercentage).toBe(100);
 	});
 
@@ -93,7 +93,7 @@ describe('recommendGpuLayers', () => {
 		const result = recommendGpuLayers(info, 2 * GB, 4096);
 
 		expect(result.layers).toBe(10);
-		expect(result.offloadPercentage).toBeCloseTo(31.25);
+		expect(result.offloadPercentage).toBeCloseTo(30.3, 1); // 10/33 layers
 	});
 
 	it('returns 0 layers when nothing fits', () => {

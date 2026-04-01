@@ -306,7 +306,7 @@
 								<span
 									>ngl <span class="text-[var(--color-text-secondary)]"
 										>{profile.gpu_layers ?? 'auto'}{data.model.block_count
-											? `/${data.model.block_count}`
+											? `/${data.model.block_count + 1}`
 											: ''}</span
 									></span
 								>
