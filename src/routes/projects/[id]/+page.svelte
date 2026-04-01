@@ -97,6 +97,7 @@
 	onMount(() => {
 		loadProject();
 		loadFiles();
+		loadGitStatus();
 		cleanupServerInfo = loadServerInfo();
 		return () => {
 			cleanupServerInfo?.();
@@ -113,6 +114,24 @@
 			}
 		} catch {
 			goto('/projects');
+		}
+	}
+
+	async function loadGitStatus() {
+		try {
+			const res = await fetch(`/api/projects/${projectId}/status`);
+			if (res.ok) {
+				const data = await res.json();
+				if (data.isGit && data.files.length > 0) {
+					const newChanged = new Map<string, 'created' | 'modified'>();
+					for (const f of data.files) {
+						newChanged.set(f.path, f.operation);
+					}
+					changedFiles = newChanged;
+				}
+			}
+		} catch {
+			// Not critical
 		}
 	}
 
