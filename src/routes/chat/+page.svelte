@@ -2,7 +2,7 @@
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 	import katex from 'katex';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 
 	interface Message {
 		id?: number;
@@ -52,6 +52,7 @@
 	let input = $state('');
 	let streaming = $state(false);
 	let abortController: AbortController | null = $state(null);
+	let textareaEl: HTMLTextAreaElement | undefined = $state();
 	let messagesContainer: HTMLDivElement | undefined = $state();
 	let confirmDeleteId: number | null = $state(null);
 	let sidebarOpen = $state(true);
@@ -306,6 +307,7 @@
 		} finally {
 			streaming = false;
 			abortController = null;
+			tick().then(() => textareaEl?.focus());
 		}
 	}
 
@@ -733,6 +735,7 @@
 		<div class="border-t border-[var(--color-border)] px-4 py-3">
 			<div class="mx-auto flex max-w-3xl gap-2">
 				<textarea
+					bind:this={textareaEl}
 					bind:value={input}
 					onkeydown={handleKeydown}
 					placeholder={serverInfo?.status === 'ready' ? 'Message...' : 'Load a model first...'}
