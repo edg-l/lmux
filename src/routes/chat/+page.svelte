@@ -65,14 +65,12 @@
 					return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
 				},
 				code({ text, lang }) {
-					// Strip tags to get raw text, then trim trailing whitespace/newlines
-					const raw = text.replace(/<[^>]+>/g, '').replace(/[\s\n]+$/, '');
-					const lineCount = raw.split('\n').length;
-					const nums = Array.from({ length: lineCount }, (_, i) => `<span>${i + 1}</span>`).join('\n');
-					// Also trim the highlighted HTML to match
 					const trimmed = text.replace(/\s+$/, '');
+					// Wrap each line in a span for CSS counter line numbers
+					// Split on newlines while preserving hljs spans that may cross lines
+					const lines = trimmed.split('\n').map((line) => `<span class="line">${line || ' '}</span>`).join('\n');
 					const langLabel = lang ? `<div class="code-lang">${lang}</div>` : '';
-					return `<div class="code-block">${langLabel}<div class="code-body"><div class="line-numbers" aria-hidden="true">${nums}</div><pre class="code-content"><code class="hljs${lang ? ` language-${lang}` : ''}">${trimmed}</code></pre></div></div>`;
+					return `<div class="code-block">${langLabel}<pre class="code-content"><code class="hljs${lang ? ` language-${lang}` : ''}">${lines}</code></pre></div>`;
 				}
 			}
 		}
@@ -2411,38 +2409,35 @@
 		border-bottom: 1px solid var(--color-border);
 		font-family: ui-monospace, monospace;
 	}
-	:global(.assistant-content .code-body) {
-		display: flex;
-		overflow-x: auto;
-	}
-	:global(.assistant-content .line-numbers) {
-		flex-shrink: 0;
-		padding: 0.75rem 0.75rem 0.75rem 0.75rem;
-		text-align: right;
-		color: var(--color-text-muted);
-		opacity: 0.35;
-		font-size: 0.8rem;
-		line-height: 1.5;
-		font-family: ui-monospace, monospace;
-		white-space: pre;
-		user-select: none;
-		-webkit-user-select: none;
-		border-right: 1px solid var(--color-border);
-	}
-	:global(.assistant-content .line-numbers span) {
-		display: block;
-	}
 	:global(.assistant-content .code-content) {
 		margin: 0;
-		padding: 0.75rem;
+		padding: 0.75rem 0.75rem 0.75rem 0;
 		font-size: 0.8rem;
 		line-height: 1.5;
-		flex: 1;
-		min-width: 0;
+		overflow-x: auto;
+		counter-reset: line;
 	}
 	:global(.assistant-content .code-content code) {
 		background: none;
 		padding: 0;
+		counter-reset: line;
+	}
+	:global(.assistant-content .code-content code .line) {
+		display: block;
+	}
+	:global(.assistant-content .code-content code .line::before) {
+		counter-increment: line;
+		content: counter(line);
+		display: inline-block;
+		width: 3ch;
+		margin-right: 1rem;
+		padding-right: 0.5rem;
+		text-align: right;
+		color: var(--color-text-muted);
+		opacity: 0.35;
+		border-right: 1px solid var(--color-border);
+		user-select: none;
+		-webkit-user-select: none;
 	}
 	:global(.assistant-content .code-block .hljs) {
 		background: none;
