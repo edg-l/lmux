@@ -4,8 +4,8 @@ import { getAllModels, scanModels } from '$lib/server/models';
 
 export const GET: RequestHandler = async ({ url }) => {
 	const scan = url.searchParams.get('scan');
-	if (scan === 'true') {
-		const added = await scanModels();
+	if (scan === 'true' || scan === 'force') {
+		const added = await scanModels(scan === 'force');
 		return json({ added, models: getAllModels() });
 	}
 

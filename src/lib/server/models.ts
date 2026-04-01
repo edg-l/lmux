@@ -56,7 +56,7 @@ export interface ProfileInput {
 /**
  * Recursively find all .gguf files in models dir and HF cache, register new ones in DB.
  */
-export async function scanModels(): Promise<number> {
+export async function scanModels(force = false): Promise<number> {
 	const modelsDir = getModelsDir();
 	const ggufFiles = findGgufFiles(modelsDir);
 	const mmprojFiles = findMmprojFiles(modelsDir);
@@ -66,6 +66,18 @@ export async function scanModels(): Promise<number> {
 	if (hfCacheDir) {
 		ggufFiles.push(...findHfCacheGgufs(hfCacheDir));
 		mmprojFiles.push(...findHfCacheMmproj(hfCacheDir));
+	}
+
+	// Prune models whose files no longer exist
+	if (force) {
+		const allModels = queryAll<{ id: number; filepath: string }>('SELECT id, filepath FROM models');
+		for (const model of allModels) {
+			try {
+				realpathSync(model.filepath);
+			} catch {
+				execute('DELETE FROM models WHERE id = $id', { $id: model.id });
+			}
+		}
 	}
 
 	let added = 0;
@@ -84,7 +96,33 @@ export async function scanModels(): Promise<number> {
 			'SELECT id FROM models WHERE filepath = $filepath OR filepath = $realpath',
 			{ $filepath: filepath, $realpath: realPath }
 		);
-		if (existing) continue;
+
+		if (existing) {
+			// Force rescan: re-parse GGUF metadata
+			if (force) {
+				try {
+					const info = await getModelInfo(realPath);
+					execute(
+						`UPDATE models SET size_bytes = $size_bytes, architecture = $architecture,
+						 parameter_count = $parameter_count, quant_type = $quant_type,
+						 context_length = $context_length, block_count = $block_count
+						 WHERE id = $id`,
+						{
+							$id: existing.id,
+							$size_bytes: info.fileSize,
+							$architecture: info.architecture,
+							$parameter_count: info.parameterCount,
+							$quant_type: info.quantType,
+							$context_length: info.contextLength,
+							$block_count: info.blockCount || null
+						}
+					);
+				} catch {
+					// Skip on parse failure
+				}
+			}
+			continue;
+		}
 
 		try {
 			const info = await getModelInfo(realPath);

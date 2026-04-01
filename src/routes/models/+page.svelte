@@ -11,7 +11,7 @@
 	async function scan() {
 		scanning = true;
 		try {
-			const res = await fetch('/api/models?scan=true');
+			const res = await fetch('/api/models?scan=force');
 			if (res.ok) {
 				const body = await res.json();
 				localModels = body.models;
