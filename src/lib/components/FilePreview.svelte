@@ -6,10 +6,9 @@
 	interface Props {
 		projectId: number;
 		filePath: string | null;
-		oldContent?: string | null;
 	}
 
-	let { projectId, filePath, oldContent = null }: Props = $props();
+	let { projectId, filePath }: Props = $props();
 
 	let diffMode = $state(true);
 
@@ -18,6 +17,7 @@
 	let truncated = $state(false);
 	let loading = $state(false);
 	let error = $state('');
+	let gitDiff = $state<string | null>(null);
 
 	// Only needed for extensions/filenames that don't match a registered hljs language name
 	const LANG_OVERRIDES: Record<string, string> = {
@@ -61,16 +61,25 @@
 	async function loadFile(path: string) {
 		loading = true;
 		error = '';
+		gitDiff = null;
 		try {
-			const res = await fetch(`/api/projects/${projectId}/file?path=${encodeURIComponent(path)}`);
-			if (!res.ok) {
+			const [fileRes, diffRes] = await Promise.all([
+				fetch(`/api/projects/${projectId}/file?path=${encodeURIComponent(path)}`),
+				fetch(`/api/projects/${projectId}/diff?path=${encodeURIComponent(path)}`)
+			]);
+			if (!fileRes.ok) {
 				error = 'Failed to load file';
 				return;
 			}
-			const data = await res.json();
+			const data = await fileRes.json();
 			content = data.content;
 			totalLines = data.totalLines;
 			truncated = data.truncated;
+
+			if (diffRes.ok) {
+				const diffData = await diffRes.json();
+				gitDiff = diffData.diff ?? null;
+			}
 		} catch {
 			error = 'Failed to load file';
 		} finally {
@@ -99,7 +108,7 @@
 		>
 			<span class="truncate font-mono text-xs text-[var(--color-text-secondary)]">{filePath}</span>
 			<div class="flex shrink-0 items-center gap-2">
-				{#if oldContent != null}
+				{#if gitDiff}
 					<div class="flex overflow-hidden rounded border border-[var(--color-border)]">
 						<button
 							onclick={() => (diffMode = false)}
@@ -133,8 +142,8 @@
 
 		<!-- Code content -->
 		<div class="flex-1 overflow-auto bg-[#0d1117]">
-			{#if diffMode && oldContent != null}
-				<DiffView {oldContent} newContent={content} />
+			{#if diffMode && gitDiff}
+				<DiffView diff={gitDiff} />
 			{:else}
 				<pre class="file-preview-code"><code class="hljs"
 						>{@html (() => {

@@ -5,7 +5,7 @@ export async function insertProjectLines(
 	projectRoot: string
 ): Promise<{
 	result: string;
-	fileChanged?: { path: string; operation: 'modified'; oldContent?: string };
+	fileChanged?: { path: string; operation: 'modified' };
 }> {
 	const resolved = resolveProjectPath(projectRoot, args.path);
 	const file = Bun.file(resolved);
@@ -15,7 +15,6 @@ export async function insertProjectLines(
 	}
 
 	const text = await file.text();
-	const oldContent = text.length <= 512000 ? text : undefined;
 	const lines = text.split('\n');
 
 	const insertAt = Math.max(0, Math.min(args.line, lines.length));
@@ -26,6 +25,6 @@ export async function insertProjectLines(
 
 	return {
 		result: `Inserted ${newLines.length} lines at line ${insertAt}`,
-		fileChanged: { path: args.path, operation: 'modified', oldContent }
+		fileChanged: { path: args.path, operation: 'modified' }
 	};
 }

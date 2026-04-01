@@ -216,10 +216,7 @@ export const POST: RequestHandler = async ({ request }) => {
 											JSON.stringify({
 												type: 'file_changed',
 												path: fileChanged.path,
-												operation: fileChanged.operation,
-												...(fileChanged.oldContent !== undefined && {
-													old_content: fileChanged.oldContent
-												})
+												operation: fileChanged.operation
 											})
 										)
 									)

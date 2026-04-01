@@ -5,7 +5,7 @@ export async function editProjectFile(
 	projectRoot: string
 ): Promise<{
 	result: string;
-	fileChanged?: { path: string; operation: 'modified'; oldContent?: string };
+	fileChanged?: { path: string; operation: 'modified' };
 }> {
 	const resolved = resolveProjectPath(projectRoot, args.path);
 	const file = Bun.file(resolved);
@@ -36,15 +36,13 @@ export async function editProjectFile(
 		};
 	}
 
-	const oldContent = content.length <= 512000 ? content : undefined;
-
 	if (args.replace_all) {
 		// Use split/join to avoid $ substitution patterns in String.replace
 		const newContent = content.split(args.old_string).join(args.new_string);
 		await Bun.write(resolved, newContent);
 		return {
 			result: `Replaced ${count} occurrences`,
-			fileChanged: { path: args.path, operation: 'modified', oldContent }
+			fileChanged: { path: args.path, operation: 'modified' }
 		};
 	}
 
@@ -57,6 +55,6 @@ export async function editProjectFile(
 
 	return {
 		result: `Replaced 1 occurrence at line ${lineNumber}`,
-		fileChanged: { path: args.path, operation: 'modified', oldContent }
+		fileChanged: { path: args.path, operation: 'modified' }
 	};
 }
