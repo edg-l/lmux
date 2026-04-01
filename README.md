@@ -7,13 +7,17 @@ Built with SvelteKit, Bun, and SQLite.
 ## Features
 
 - **Model Library** -- Scan local GGUF files and HuggingFace cache, parse metadata (architecture, params, quant type, context length), display in a browsable grid
-- **HuggingFace Integration** -- Search models, browse trending, inspect repo files with VRAM fit indicators, download with progress/resume/cancel
+- **HuggingFace Integration** -- Search models, browse trending, inspect repo files with VRAM fit indicators, download with progress/resume/cancel, fetch recommended sampling parameters from `generation_config.json`
 - **Hardware Detection** -- NVIDIA (nvidia-smi), AMD (rocm-smi), CPU, RAM, and disk. Used to auto-generate launch profiles
-- **VRAM Recommendations** -- Estimates VRAM for model weights + KV cache. Layers-first allocation strategy (maximize GPU layers, then fit context into remaining VRAM)
+- **VRAM Recommendations** -- Estimates VRAM for model weights + KV cache, including hybrid SSM/attention models (Qwen3.5, etc.). Layers-first allocation strategy (maximize GPU layers, then fit context into remaining VRAM)
 - **Launch Profiles** -- Per-model saved configurations: GPU layers, context size, threads, batch size, flash attention, KV cache type, port, extra flags
 - **Server Management** -- Spawn/stop llama-server, health polling, log viewer, one-server-at-a-time with mutex serialization
-- **Chat** -- SSE streaming, markdown rendering with KaTeX math support, `<think>` block collapsing, conversation CRUD, adjustable sampling parameters
-- **Settings** -- Models directory, llama-server path (auto-detect), HuggingFace token, VRAM headroom
+- **Chat-Model Coupling** -- Conversations are tied to specific models. Model selector for new chats, "Launch model" button when the conversation's model isn't running, stop-and-switch flow
+- **Chat** -- SSE streaming, markdown rendering with KaTeX math support, `<think>` block collapsing, conversation CRUD, adjustable sampling parameters per model
+- **Tool Calling** -- Built-in `web_search` (via SearXNG) and `fetch_url` tools with SSRF protection. Collapsible tool status cards in the chat UI. Configurable per-session
+- **System Prompts** -- Global default with per-model overrides. Template variables (`{{date}}`, `{{time}}`, `{{day}}`, `{{model}}`, `{{user}}`) expanded at send time
+- **KV Cache Persistence** -- Optional `--slot-save-path` support for resuming conversations without re-processing the prompt. Defaults to `~/.cache/lmux/kv`
+- **Settings** -- Models directory, llama-server path (auto-detect), HuggingFace token, VRAM headroom, SearXNG URL, KV cache directory, global system prompt
 
 ## Requirements
 
@@ -34,6 +38,7 @@ bun run dev
 ```
 
 On first launch, lmux will:
+
 1. Create its database at `~/.local/share/lmux/lmux.db`
 2. Create a models directory at `~/.local/share/lmux/models/`
 3. Auto-detect your hardware and llama-server path
