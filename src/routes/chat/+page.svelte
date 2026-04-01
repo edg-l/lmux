@@ -18,7 +18,7 @@
 		toolName?: string;
 		toolArgs?: string;
 		toolStatus?: 'running' | 'done';
-		images?: Array<{ name: string; base64: string; dataUrl: string }>;
+		images?: Array<{ name: string; dataUrl: string; base64?: string }>;
 	}
 
 	interface Conversation {
@@ -456,7 +456,12 @@
 		conversationId: number,
 		role: string,
 		content: string,
-		opts?: { toolCallId?: string; toolCalls?: string; tokenCount?: number }
+		opts?: {
+			toolCallId?: string;
+			toolCalls?: string;
+			tokenCount?: number;
+			images?: Array<{ name: string; dataUrl: string }>;
+		}
 	): Promise<number | null> {
 		try {
 			const res = await fetch(`/api/conversations/${conversationId}/messages`, {
@@ -467,7 +472,8 @@
 					content,
 					...(opts?.toolCallId && { toolCallId: opts.toolCallId }),
 					...(opts?.toolCalls && { toolCalls: opts.toolCalls }),
-					...(opts?.tokenCount != null && { tokenCount: opts.tokenCount })
+					...(opts?.tokenCount != null && { tokenCount: opts.tokenCount }),
+					...(opts?.images && { images: JSON.stringify(opts.images) })
 				})
 			});
 			if (res.ok) {
@@ -541,7 +547,7 @@
 			} as Message
 		];
 		input = '';
-		await saveMessage(conversationId, 'user', text);
+		await saveMessage(conversationId, 'user', text, images.length > 0 ? { images } : undefined);
 		messages = [...messages, { role: 'assistant', content: '' }];
 
 		streaming = true;

@@ -23,7 +23,13 @@ interface MessageRow {
 	token_count: number | null;
 	tool_call_id: string | null;
 	tool_calls: string | null;
+	images: string | null;
 	created_at: string;
+}
+
+export interface ImageData {
+	name: string;
+	dataUrl: string;
 }
 
 export interface Message {
@@ -34,6 +40,7 @@ export interface Message {
 	token_count: number | null;
 	tool_call_id: string | null;
 	tool_calls: ToolCallData[] | null;
+	images: ImageData[] | null;
 	created_at: string;
 }
 
@@ -68,18 +75,20 @@ export function addMessage(
 	content: string,
 	tokenCount?: number,
 	toolCallId?: string,
-	toolCalls?: string
+	toolCalls?: string,
+	images?: string
 ): number {
 	const result = execute(
-		`INSERT INTO messages (conversation_id, role, content, token_count, tool_call_id, tool_calls)
-		 VALUES ($conversation_id, $role, $content, $token_count, $tool_call_id, $tool_calls)`,
+		`INSERT INTO messages (conversation_id, role, content, token_count, tool_call_id, tool_calls, images)
+		 VALUES ($conversation_id, $role, $content, $token_count, $tool_call_id, $tool_calls, $images)`,
 		{
 			$conversation_id: conversationId,
 			$role: role,
 			$content: content,
 			$token_count: tokenCount ?? null,
 			$tool_call_id: toolCallId ?? null,
-			$tool_calls: toolCalls ?? null
+			$tool_calls: toolCalls ?? null,
+			$images: images ?? null
 		}
 	);
 
@@ -105,7 +114,15 @@ export function getMessages(conversationId: number): Message[] {
 				toolCalls = null;
 			}
 		}
-		return { ...row, tool_calls: toolCalls };
+		let images: ImageData[] | null = null;
+		if (row.images) {
+			try {
+				images = JSON.parse(row.images);
+			} catch {
+				images = null;
+			}
+		}
+		return { ...row, tool_calls: toolCalls, images };
 	});
 }
 
