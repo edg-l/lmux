@@ -19,7 +19,12 @@
 				result.push({ type: 'added', content: line.slice(1) });
 			} else if (line.startsWith('-') && !line.startsWith('---')) {
 				result.push({ type: 'removed', content: line.slice(1) });
-			} else if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) {
+			} else if (
+				line.startsWith('diff ') ||
+				line.startsWith('index ') ||
+				line.startsWith('---') ||
+				line.startsWith('+++')
+			) {
 				// skip diff metadata headers
 			} else {
 				result.push({ type: 'context', content: line.startsWith(' ') ? line.slice(1) : line });
@@ -30,15 +35,13 @@
 </script>
 
 <pre class="diff-view"><code
-		>{#each lines as line, i (i)}{#if line.type === 'header'}<span
-					class="diff-line diff-header">{line.content}</span
+		>{#each lines as line, i (i)}{#if line.type === 'header'}<span class="diff-line diff-header"
+					>{line.content}</span
 				>{:else if line.type === 'added'}<span class="diff-line diff-added"
 					>+{line.content || ' '}</span
 				>{:else if line.type === 'removed'}<span class="diff-line diff-removed"
 					>-{line.content || ' '}</span
-				>{:else}<span class="diff-line diff-context"
-					> {line.content || ' '}</span
-				>{/if}{/each}</code
+				>{:else}<span class="diff-line diff-context"> {line.content || ' '}</span>{/if}{/each}</code
 	></pre>
 
 <style>

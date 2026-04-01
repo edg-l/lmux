@@ -5,7 +5,11 @@ import { getToolDefinitions, executeTool } from '$lib/server/tools';
 import { consumeLlamaStream } from '$lib/server/tools/llama-stream';
 import type { ToolCall } from '$lib/server/tools/llama-stream';
 import { resolveSystemPrompt } from '$lib/server/system-prompt';
-import { requestApproval, cleanupApproval } from '$lib/server/approval-store';
+import {
+	requestApproval,
+	cleanupApproval,
+	requestSandboxResolution
+} from '$lib/server/approval-store';
 import { detectDangerousPatterns } from '$lib/server/danger-detect';
 import { isLandlockAvailable } from '$lib/server/sandbox';
 import { getProject } from '$lib/server/projects';
@@ -23,7 +27,7 @@ function sseEvent(data: string): string {
 	return `data: ${data}\n\n`;
 }
 
-const MAX_TOOL_ITERATIONS = 10;
+const MAX_TOOL_ITERATIONS = 25;
 const CHUNK_SIZE = 20;
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -83,7 +87,8 @@ export const POST: RequestHandler = async ({ request }) => {
 					: [...normalized];
 				let reachedLimit = true;
 
-				for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+				for (let iteration = 0; iteration <= MAX_TOOL_ITERATIONS; iteration++) {
+					const disableTools = iteration === MAX_TOOL_ITERATIONS;
 					const llamaRes = await fetch(`http://localhost:${state.port}/v1/chat/completions`, {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
@@ -91,7 +96,7 @@ export const POST: RequestHandler = async ({ request }) => {
 							messages,
 							stream: true,
 							stream_options: { include_usage: true },
-							...(tools.length > 0 && { tools }),
+							...(tools.length > 0 && !disableTools && { tools }),
 							...(body.sampling && {
 								temperature: body.sampling.temperature,
 								top_p: body.sampling.top_p,
@@ -123,6 +128,29 @@ export const POST: RequestHandler = async ({ request }) => {
 					}
 
 					const result = await consumeLlamaStream(llamaRes.body);
+
+					// Detect raw JSON tool calls in content (model outputting JSON instead of using tool_call format)
+					if (result.toolCalls.length === 0 && result.content.trim()) {
+						const content = result.content.trim();
+						try {
+							// Try to parse as a single tool call: {"name": "...", "arguments": {...}}
+							const parsed = JSON.parse(content);
+							if (parsed.name && parsed.arguments) {
+								const args =
+									typeof parsed.arguments === 'string'
+										? parsed.arguments
+										: JSON.stringify(parsed.arguments);
+								result.toolCalls.push({
+									id: `tc_text_${Date.now()}`,
+									type: 'function',
+									function: { name: parsed.name, arguments: args }
+								});
+								result.content = '';
+							}
+						} catch {
+							// Not JSON, continue as normal text
+						}
+					}
 
 					if (result.toolCalls.length > 0) {
 						// Emit tool_call events
@@ -158,6 +186,7 @@ export const POST: RequestHandler = async ({ request }) => {
 							}
 
 							let toolResult: string;
+							let toolError = false;
 							let fileChanged:
 								| { path: string; operation: 'created' | 'modified'; oldContent?: string }
 								| undefined;
@@ -194,16 +223,20 @@ export const POST: RequestHandler = async ({ request }) => {
 
 									if (approvalResult === 'timeout') {
 										toolResult = 'Command approval timed out';
+										toolError = true;
 									} else if (approvalResult === 'denied') {
 										toolResult = 'Command denied by user';
+										toolError = true;
 									} else {
 										try {
 											const execResult = await executeTool(tc.function.name, args, project);
 											toolResult = execResult.result;
+											toolError = execResult.error ?? false;
 											fileChanged = execResult.fileChanged;
 											blockedPaths = execResult.blockedPaths ?? [];
 										} catch (e) {
 											toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
+											toolError = true;
 										}
 									}
 								} else {
@@ -211,39 +244,67 @@ export const POST: RequestHandler = async ({ request }) => {
 									try {
 										const execResult = await executeTool(tc.function.name, args, project);
 										toolResult = execResult.result;
+										toolError = execResult.error ?? false;
 										fileChanged = execResult.fileChanged;
 										blockedPaths = execResult.blockedPaths ?? [];
 									} catch (e) {
 										toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
+										toolError = true;
 									}
 								}
 							} else {
 								try {
 									const execResult = await executeTool(tc.function.name, args, project);
 									toolResult = execResult.result;
+									toolError = execResult.error ?? false;
 									fileChanged = execResult.fileChanged;
 								} catch (e) {
 									toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
+									toolError = true;
 								}
 							}
 
-							// Emit sandbox_blocked event if paths were blocked
+							// Wait for user to resolve sandbox blocked paths before returning result
 							if (blockedPaths.length > 0) {
 								const home = homedir();
 								const displayPaths = blockedPaths.map((p) =>
 									p.startsWith(home) ? '~' + p.slice(home.length) : p
 								);
+								const sandboxRequestId = crypto.randomUUID();
 								controller.enqueue(
 									new TextEncoder().encode(
 										sseEvent(
 											JSON.stringify({
 												type: 'sandbox_blocked',
+												requestId: sandboxRequestId,
 												paths: displayPaths,
 												absolutePaths: blockedPaths
 											})
 										)
 									)
 								);
+
+								// Wait for user to allow or dismiss
+								const sandboxResult =
+									await requestSandboxResolution(sandboxRequestId);
+								if (sandboxResult === 'allowed') {
+									// Re-run the command with the new path exception
+									try {
+										const retryResult = await executeTool(
+											tc.function.name,
+											args,
+											project
+										);
+										toolResult = retryResult.result;
+										toolError = retryResult.error ?? false;
+										fileChanged = retryResult.fileChanged;
+										// Don't check blockedPaths again to avoid infinite loop
+									} catch (e) {
+										toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
+										toolError = true;
+									}
+								}
+								// If dismissed or timeout, the original error result is sent to the model
 							}
 
 							if (fileChanged) {
@@ -267,7 +328,8 @@ export const POST: RequestHandler = async ({ request }) => {
 											type: 'tool_result',
 											id: tc.id,
 											name: tc.function.name,
-											content: toolResult
+											content: toolResult,
+											error: toolError
 										})
 									)
 								)
@@ -285,7 +347,21 @@ export const POST: RequestHandler = async ({ request }) => {
 						continue;
 					}
 
-					// No tool calls: this is the final answer
+					// No tool calls: if content is empty, the model may have stalled -- emit a notice
+					if (!result.content.trim()) {
+						controller.enqueue(
+							new TextEncoder().encode(
+								sseEvent(
+									JSON.stringify({
+										type: 'delta',
+										content:
+											'[The model returned an empty response. This may indicate a context length issue or the model failing to generate output.]'
+									})
+								)
+							)
+						);
+					}
+
 					// Emit content in chunks for smoother UI
 					const content = result.content;
 					for (let i = 0; i < content.length; i += CHUNK_SIZE) {
@@ -318,9 +394,9 @@ export const POST: RequestHandler = async ({ request }) => {
 						new TextEncoder().encode(
 							sseEvent(
 								JSON.stringify({
-									type: 'delta',
-									content:
-										'[Tool calling limit reached. The model called tools too many times without producing a final answer.]'
+									type: 'error',
+									message:
+										'Tool calling limit reached. The model was forced to produce a final answer.'
 								})
 							)
 						)

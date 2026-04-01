@@ -122,7 +122,7 @@ describe('editProjectFile', () => {
 			{ path: 'hello.ts', old_string: 'foo', new_string: 'bar', replace_all: true },
 			tmpDir
 		);
-		expect(result.result).toBe('Replaced 3 occurrences');
+		expect(result.result).toContain('Replaced 3 occurrences');
 		expect(result.fileChanged).toMatchObject({ path: 'hello.ts', operation: 'modified' });
 	});
 

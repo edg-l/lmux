@@ -1,24 +1,13 @@
 <script lang="ts">
-	import { renderMarkdown } from '$lib/markdown';
-	import 'highlight.js/styles/github-dark.css';
 	import { onMount, tick } from 'svelte';
-
-	interface ToolCallData {
-		id: string;
-		function: { name: string; arguments: string };
-	}
-
-	interface Message {
-		id?: number;
-		role: string;
-		content: string;
-		tool_calls?: ToolCallData[] | null;
-		tool_call_id?: string | null;
-		toolName?: string;
-		toolArgs?: string;
-		toolStatus?: 'running' | 'done';
-		images?: Array<{ name: string; dataUrl: string; base64?: string }>;
-	}
+	import ChatPanel from '$lib/components/ChatPanel.svelte';
+	import type { Message, ServerInfo } from '$lib/types/chat';
+	import { processSSEStream } from '$lib/utils/stream';
+	import {
+		enrichToolMessages,
+		exportChat as exportChatUtil,
+		prepareMessagesForApi
+	} from '$lib/utils/chat';
 
 	interface Conversation {
 		id: number;
@@ -33,15 +22,6 @@
 	interface AvailableModel {
 		id: number;
 		filename: string;
-	}
-
-	interface ServerInfo {
-		status: string;
-		modelId: number | null;
-		modelName: string | null;
-		port: number;
-		contextSize: number | null;
-		lastTokensPerSecond: number | null;
 	}
 
 	interface SamplingParams {
@@ -66,8 +46,7 @@
 	let input = $state('');
 	let streaming = $state(false);
 	let abortController: AbortController | null = $state(null);
-	let textareaEl: HTMLTextAreaElement | undefined = $state();
-	let messagesContainer: HTMLDivElement | undefined = $state();
+	let chatPanelRef: ChatPanel | undefined = $state();
 	let confirmDeleteId: number | null = $state(null);
 	let sidebarOpen = $state(true);
 
@@ -89,9 +68,6 @@
 	// Token usage tracking
 	let tokenUsage: { prompt: number; completion: number; total: number } | null = $state(null);
 
-	// Thinking block expansion tracking (collapsed by default, set tracks *expanded* ones)
-	let expandedThinking = $state<Set<number>>(new Set());
-
 	// Model selection state
 	let availableModels = $state<AvailableModel[]>([]);
 	let selectedModelId: number | null = $state(null);
@@ -100,7 +76,6 @@
 
 	// Tool calling state
 	let toolsEnabled = $state(true);
-	let expandedTools = $state<Set<number>>(new Set());
 
 	// Feature 1: Conversation search
 	let searchQuery = $state('');
@@ -125,10 +100,6 @@
 
 	// Feature 2: Export chat
 	let exportOpen = $state(false);
-
-	// Feature 5: Multi-turn editing
-	let editingMessageIdx: number | null = $state(null);
-	let editInput = $state('');
 
 	// Feature 6: Reasoning budget
 	let thinkingBudgetEnabled = $state(false);
@@ -243,53 +214,6 @@
 		} catch {
 			// revert on failure
 			toolsEnabled = !toolsEnabled;
-		}
-	}
-
-	/** Enrich tool messages loaded from DB with tool name/args from the preceding assistant's tool_calls */
-	function enrichToolMessages(msgs: Message[]): Message[] {
-		const toolCallMap = new Map<string, ToolCallData>();
-		return msgs.map((msg) => {
-			if (msg.role === 'assistant' && msg.tool_calls) {
-				for (const tc of msg.tool_calls) {
-					toolCallMap.set(tc.id, tc);
-				}
-			}
-			if (msg.role === 'tool' && msg.tool_call_id) {
-				const tc = toolCallMap.get(msg.tool_call_id);
-				return {
-					...msg,
-					toolName: tc?.function.name ?? 'tool',
-					toolArgs: tc?.function.arguments,
-					toolStatus: 'done' as const
-				};
-			}
-			return msg;
-		});
-	}
-
-	function toggleTool(key: number) {
-		const next = new Set(expandedTools);
-		if (next.has(key)) {
-			next.delete(key);
-		} else {
-			next.add(key);
-		}
-		expandedTools = next;
-	}
-
-	$effect(() => {
-		if (messagesContainer && messages.length > 0) {
-			messages[messages.length - 1]?.content;
-			scrollToBottom();
-		}
-	});
-
-	function scrollToBottom() {
-		if (messagesContainer) {
-			requestAnimationFrame(() => {
-				if (messagesContainer) messagesContainer.scrollTop = messagesContainer.scrollHeight;
-			});
 		}
 	}
 
@@ -552,41 +476,8 @@
 		const controller = new AbortController();
 		abortController = controller;
 
-		// Track tool messages to persist after stream ends
-		const pendingToolMessages: Array<{
-			role: string;
-			content: string;
-			toolCalls?: string;
-			toolCallId?: string;
-		}> = [];
-		// Map tool_call id to the index in messages array for status updates
-		const toolStatusIndices = new Map<string, number>();
-
 		try {
-			const allowedRoles = new Set(['user', 'assistant', 'tool', 'system']);
-			const chatMessages = messages
-				.slice(0, -1) // exclude empty assistant placeholder
-				.filter((m) => allowedRoles.has(m.role))
-				.map((m) => {
-					// Build multimodal content for messages with images
-					let content: unknown = m.content;
-					if (m.images && m.images.length > 0) {
-						content = [
-							{ type: 'text', text: m.content },
-							...m.images.map((img) => ({
-								type: 'image_url',
-								image_url: { url: img.dataUrl }
-							}))
-						];
-					}
-					const msg: Record<string, unknown> = { role: m.role, content };
-					if (m.tool_calls) msg.tool_calls = m.tool_calls;
-					if (m.tool_call_id) {
-						msg.role = 'tool';
-						msg.tool_call_id = m.tool_call_id;
-					}
-					return msg;
-				});
+			const chatMessages = prepareMessagesForApi(messages.slice(0, -1));
 
 			const res = await fetch('/api/chat', {
 				method: 'POST',
@@ -625,94 +516,43 @@
 				return;
 			}
 
-			const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-			let buffer = '';
-			// Track accumulated tool_calls for the current assistant message
-			let currentToolCalls: ToolCallData[] = [];
-
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-				buffer += value;
-				const lines = buffer.split('\n');
-				buffer = lines.pop() ?? '';
-				for (const line of lines) {
-					if (!line.startsWith('data: ')) continue;
-					const data = line.slice(6).trim();
-					if (data === '[DONE]') continue;
-					try {
-						const parsed = JSON.parse(data);
-
-						if (parsed.type === 'delta') {
-							messages = messages.map((m, i) =>
-								i === messages.length - 1 ? { ...m, content: m.content + parsed.content } : m
-							);
-						} else if (parsed.type === 'tool_call') {
-							const tc: ToolCallData = {
-								id: parsed.id,
-								function: { name: parsed.name, arguments: parsed.arguments }
-							};
-							currentToolCalls.push(tc);
-
-							// Add a tool_status message for the UI
-							const statusIdx = messages.length;
-							toolStatusIndices.set(parsed.id, statusIdx);
-							messages = [
-								...messages,
-								{
-									role: 'tool_status',
-									content: '',
-									toolName: parsed.name,
-									toolArgs: parsed.arguments,
-									toolStatus: 'running',
-									tool_call_id: parsed.id
-								}
-							];
-						} else if (parsed.type === 'tool_result') {
-							const statusIdx = toolStatusIndices.get(parsed.id);
-							if (statusIdx !== undefined) {
-								messages = messages.map((m, i) =>
-									i === statusIdx
-										? { ...m, content: parsed.content, toolStatus: 'done' as const }
-										: m
-								);
-							}
-
-							// Save the tool_calls assistant message if this is the first result
-							// (all tool_calls were emitted before any tool_result)
-							if (currentToolCalls.length > 0) {
-								// Find the last real assistant message (not tool_status)
-								const lastAssistant = messages[messages.length - currentToolCalls.length - 1];
-								const assistantContent =
-									lastAssistant?.role === 'assistant' ? lastAssistant.content : '';
-								pendingToolMessages.push({
-									role: 'assistant',
-									content: assistantContent,
-									toolCalls: JSON.stringify(currentToolCalls)
-								});
-								currentToolCalls = [];
-							}
-
-							pendingToolMessages.push({
-								role: 'tool',
-								content: parsed.content,
-								toolCallId: parsed.id
-							});
-
-							// Add a new assistant placeholder for the next response
-							messages = [...messages, { role: 'assistant', content: '' }];
-						} else if (parsed.type === 'usage') {
-							tokenUsage = {
-								prompt: parsed.prompt_tokens ?? 0,
-								completion: parsed.completion_tokens ?? 0,
-								total: parsed.total_tokens ?? 0
-							};
+			const { pendingToolMessages } = await processSSEStream(res, controller.signal, {
+				onDelta: (content) => {
+					messages = messages.map((m, i) =>
+						i === messages.length - 1 ? { ...m, content: m.content + content } : m
+					);
+				},
+				onToolCall: (tc) => {
+					messages = [
+						...messages,
+						{
+							role: 'tool_status',
+							content: '',
+							toolName: tc.function.name,
+							toolArgs: tc.function.arguments,
+							toolStatus: 'running',
+							tool_call_id: tc.id
 						}
-					} catch {
-						/* skip */
+					];
+				},
+				onToolResult: (id, content, statusIdx, error) => {
+					if (statusIdx !== undefined) {
+						messages = messages.map((m, i) =>
+							i === statusIdx ? { ...m, content, toolStatus: 'done' as const, toolError: error } : m
+						);
 					}
-				}
-			}
+					// Add a new assistant placeholder for the next response
+					messages = [...messages, { role: 'assistant', content: '' }];
+				},
+				getAssistantContent: (toolCallCount) => {
+					const lastAssistant = messages[messages.length - toolCallCount - 1];
+					return lastAssistant?.role === 'assistant' ? lastAssistant.content : '';
+				},
+				onUsage: (usage) => {
+					tokenUsage = usage;
+				},
+				getMessageCount: () => messages.length
+			});
 
 			// Persist tool messages
 			for (const tm of pendingToolMessages) {
@@ -727,39 +567,19 @@
 			if (lastMsg?.role === 'assistant' && lastMsg.content) {
 				await saveMessage(conversationId, 'assistant', lastMsg.content);
 			}
-		} catch (err) {
-			if (err instanceof DOMException && err.name === 'AbortError') {
-				for (const tm of pendingToolMessages) {
-					await saveMessage(conversationId, tm.role, tm.content, {
-						toolCalls: tm.toolCalls,
-						toolCallId: tm.toolCallId
-					});
-				}
-				const lastMsg = messages[messages.length - 1];
-				if (lastMsg?.role === 'assistant' && lastMsg.content) {
-					await saveMessage(conversationId, 'assistant', lastMsg.content);
-				}
-			} else {
-				messages = messages.map((m, i) =>
-					i === messages.length - 1 ? { ...m, content: m.content || 'Error: Connection failed' } : m
-				);
-			}
+		} catch {
+			messages = messages.map((m, i) =>
+				i === messages.length - 1 ? { ...m, content: m.content || 'Error: Connection failed' } : m
+			);
 		} finally {
 			streaming = false;
 			abortController = null;
-			tick().then(() => textareaEl?.focus());
+			tick().then(() => chatPanelRef?.focusTextarea());
 		}
 	}
 
 	function stopGeneration() {
 		abortController?.abort();
-	}
-
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter' && !e.shiftKey) {
-			e.preventDefault();
-			sendMessage();
-		}
 	}
 
 	function formatTime(dateStr: string): string {
@@ -771,49 +591,6 @@
 		const hrs = Math.floor(mins / 60);
 		if (hrs < 24) return `${hrs}h`;
 		return `${Math.floor(hrs / 24)}d`;
-	}
-
-	/**
-	 * Parse thinking blocks from content.
-	 * Supports <think>...</think> tags used by some models (Qwen, DeepSeek).
-	 * Returns array of { type: 'text' | 'thinking', content: string } segments.
-	 */
-	function parseThinking(content: string): Array<{ type: 'text' | 'thinking'; content: string }> {
-		const segments: Array<{ type: 'text' | 'thinking'; content: string }> = [];
-		const regex = /<think>([\s\S]*?)(<\/think>|$)/g;
-		let lastIndex = 0;
-		let match;
-
-		while ((match = regex.exec(content)) !== null) {
-			if (match.index > lastIndex) {
-				const text = content.slice(lastIndex, match.index).trim();
-				if (text) segments.push({ type: 'text', content: text });
-			}
-			// Always include thinking segment, even if empty (shows "Thinking..." during streaming)
-			const thinkContent = match[1].trim();
-			segments.push({ type: 'thinking', content: thinkContent || '...' });
-			lastIndex = regex.lastIndex;
-		}
-
-		if (lastIndex < content.length) {
-			const text = content.slice(lastIndex).trim();
-			if (text) segments.push({ type: 'text', content: text });
-		}
-
-		// If no thinking tags found, return single text segment
-		if (segments.length === 0 && content.trim()) {
-			segments.push({ type: 'text', content: content.trim() });
-		}
-
-		return segments;
-	}
-
-	function linkifyText(text: string): string {
-		const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-		return escaped.replace(
-			/(https?:\/\/[^\s<]+)/g,
-			'<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-		);
 	}
 
 	let activeConversation = $derived(
@@ -840,30 +617,6 @@
 		) {
 			isLaunching = false;
 		}
-	});
-
-	// Attach click handlers to code copy buttons after render
-	$effect(() => {
-		// Re-run whenever messages change
-		void messages.length;
-		tick().then(() => {
-			document.querySelectorAll('.code-copy').forEach((btn) => {
-				if (btn.getAttribute('data-wired')) return;
-				btn.setAttribute('data-wired', '1');
-				btn.addEventListener('click', () => {
-					const block = btn.closest('.code-block');
-					const code = block?.querySelector('code');
-					if (!code) return;
-					const raw = code.innerText;
-					navigator.clipboard.writeText(raw).then(() => {
-						btn.textContent = 'Copied!';
-						setTimeout(() => {
-							btn.textContent = 'Copy';
-						}, 1500);
-					});
-				});
-			});
-		});
 	});
 
 	async function launchModel(modelId: number) {
@@ -925,51 +678,15 @@
 		}
 	}
 
-	function toggleThinking(key: number) {
-		const next = new Set(expandedThinking);
-		if (next.has(key)) {
-			next.delete(key);
-		} else {
-			next.add(key);
-		}
-		expandedThinking = next;
-	}
-
 	function exportChat(format: 'markdown' | 'json') {
 		if (!activeConversation) return;
-		const chatMessages = messages.filter((m) => m.role === 'user' || m.role === 'assistant');
-		let content: string;
-		let ext: string;
-		let mimeType: string;
-
-		if (format === 'markdown') {
-			content = chatMessages
-				.map((m) => `## ${m.role === 'user' ? 'User' : 'Assistant'}\n\n${m.content}\n`)
-				.join('\n');
-			ext = 'md';
-			mimeType = 'text/markdown';
-		} else {
-			content = JSON.stringify(chatMessages, null, 2);
-			ext = 'json';
-			mimeType = 'application/json';
-		}
-
-		const blob = new Blob([content], { type: mimeType });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = `chat-${activeConversationId}-${Date.now()}.${ext}`;
-		document.body.appendChild(a);
-		a.click();
-		document.body.removeChild(a);
-		URL.revokeObjectURL(url);
+		exportChatUtil(messages, activeConversationId, format);
 		exportOpen = false;
 	}
 
-	async function saveEdit() {
-		if (editingMessageIdx === null || !activeConversationId) return;
-		const msg = messages[editingMessageIdx];
-		if (!msg?.id) return;
+	async function handleSaveEdit(idx: number, newContent: string) {
+		const msg = messages[idx];
+		if (!msg?.id || !activeConversationId) return;
 
 		await fetch(`/api/conversations/${activeConversationId}/messages`, {
 			method: 'DELETE',
@@ -977,16 +694,9 @@
 			body: JSON.stringify({ fromMessageId: msg.id })
 		});
 
-		messages = messages.slice(0, editingMessageIdx);
-		input = editInput;
-		editingMessageIdx = null;
-		editInput = '';
+		messages = messages.slice(0, idx);
+		input = newContent;
 		sendMessage();
-	}
-
-	function cancelEdit() {
-		editingMessageIdx = null;
-		editInput = '';
 	}
 
 	// Auto-scroll logs to bottom
@@ -1101,11 +811,6 @@
 	}
 
 	function handleGlobalKeydown(e: KeyboardEvent) {
-		const target = e.target as HTMLElement;
-		const tagName = target.tagName.toLowerCase();
-		// Allow shortcuts from our chat textarea, but skip other inputs/textareas
-		if ((tagName === 'input' || tagName === 'textarea') && target !== textareaEl) return;
-
 		if (e.ctrlKey && !e.shiftKey && e.key === 'n') {
 			e.preventDefault();
 			newConversation();
@@ -1739,357 +1444,61 @@
 			</div>
 		{/if}
 
-		<!-- Messages -->
-		<div bind:this={messagesContainer} class="flex-1 overflow-y-auto px-4 py-6">
-			{#if messages.length === 0}
-				<div class="flex h-full flex-col items-center justify-center">
-					{#if serverInfo?.status === 'ready' && serverInfo.modelName}
-						<p class="font-mono text-sm text-[var(--color-text-secondary)]">
-							{serverInfo.modelName}
-						</p>
-						<p class="mt-1 text-xs text-[var(--color-text-muted)]">
-							Send a message to start chatting
-						</p>
-					{:else}
-						<p class="text-sm text-[var(--color-text-muted)]">No model loaded</p>
-						<p class="mt-1 text-xs text-[var(--color-text-muted)]">
-							<a href="/models" class="text-[var(--color-accent)] hover:underline">Launch a model</a
-							> to start chatting
-						</p>
-					{/if}
-				</div>
-			{:else}
-				<div class="mx-auto max-w-3xl space-y-4">
-					{#each messages as msg, idx}
-						{#if msg.role === 'user'}
-							<div class="flex justify-end">
-								{#if editingMessageIdx === idx}
-									<div class="flex w-full max-w-[85%] flex-col gap-2">
-										<textarea
-											bind:value={editInput}
-											rows={3}
-											class="w-full resize-none rounded-lg border border-[var(--color-accent)] bg-[var(--color-elevated)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] focus:outline-none"
-										></textarea>
-										<div class="flex justify-end gap-2">
-											<button
-												onclick={cancelEdit}
-												class="rounded border border-[var(--color-border)] px-3 py-1 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
-												>Cancel</button
-											>
-											<button
-												onclick={saveEdit}
-												class="rounded bg-[var(--color-accent-dim)] px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent)]"
-												>Save</button
-											>
-										</div>
-									</div>
-								{:else}
-									<div class="group/msg relative">
-										{#if !streaming}
-											<button
-												onclick={() => {
-													editingMessageIdx = idx;
-													editInput = msg.content;
-												}}
-												class="absolute top-1/2 -left-7 -translate-y-1/2 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity group-hover/msg:opacity-100 hover:text-[var(--color-text-secondary)]"
-												aria-label="Edit message"
-												title="Edit message"
-											>
-												<svg
-													class="h-3.5 w-3.5"
-													fill="none"
-													stroke="currentColor"
-													viewBox="0 0 24 24"
-													stroke-width="1.5"
-												>
-													<path
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125"
-													/>
-												</svg>
-											</button>
-										{/if}
-										<div
-											class="max-w-[85%] rounded-2xl rounded-br-sm bg-[var(--color-accent-dim)] px-4 py-2.5"
-										>
-											<p class="user-content text-sm whitespace-pre-wrap text-white">
-												{@html linkifyText(msg.content)}
-											</p>
-										</div>
-										{#if msg.images && msg.images.length > 0}
-											<div class="mt-1.5 flex flex-wrap gap-2">
-												{#each msg.images as img (img.name)}
-													<img
-														src={img.dataUrl}
-														alt={img.name}
-														class="max-h-[28rem] max-w-full rounded-lg border border-white/10 object-contain"
-													/>
-												{/each}
-											</div>
-										{/if}
-									</div>
-								{/if}
-							</div>
-						{:else if msg.role === 'tool_status'}
-							{@const isExpanded = expandedTools.has(idx)}
-							{@const toolSummary = (() => {
-								try {
-									const args = JSON.parse(msg.toolArgs ?? '{}');
-									if (msg.toolName === 'fetch_url' && args.url) return args.url;
-									if (msg.toolName === 'web_search' && args.query) return `"${args.query}"`;
-									return '';
-								} catch {
-									return '';
-								}
-							})()}
-							<div
-								class="max-w-[90%] rounded-lg border border-l-2 border-[var(--color-border)] border-l-cyan-500/40 bg-[var(--color-elevated)]"
-							>
-								<button
-									onclick={() => toggleTool(idx)}
-									class="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
-								>
-									<svg
-										class="h-3 w-3 shrink-0 text-cyan-400 transition-transform {isExpanded
-											? 'rotate-90'
-											: ''}"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-										stroke-width="2"
-									>
-										<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-									</svg>
-									<svg
-										class="h-3 w-3 shrink-0 text-cyan-400/70"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-										stroke-width="1.5"
-									>
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											d="M11.42 15.17l-5.09-5.09a3.004 3.004 0 010-4.25 3.004 3.004 0 014.25 0l.34.34.34-.34a3.004 3.004 0 014.25 0 3.004 3.004 0 010 4.25l-5.09 5.09zM21.17 8.04l-4.25-4.25a2 2 0 00-2.83 0L12 5.88l-2.09-2.09a2 2 0 00-2.83 0L2.83 8.04a2 2 0 000 2.83L12 20l9.17-9.13a2 2 0 000-2.83z"
-										/>
-									</svg>
-									<span class="text-xs font-medium text-cyan-400/80">{msg.toolName ?? 'tool'}</span>
-									{#if toolSummary}
-										<span class="min-w-0 truncate text-xs text-[var(--color-text-muted)]"
-											>{toolSummary}</span
-										>
-									{/if}
-									{#if msg.toolStatus === 'running'}
-										<span class="h-2 w-2 shrink-0 animate-pulse rounded-full bg-cyan-400"></span>
-									{:else}
-										<svg
-											class="h-3 w-3 shrink-0 text-emerald-400"
-											fill="none"
-											stroke="currentColor"
-											viewBox="0 0 24 24"
-											stroke-width="2"
-										>
-											<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-										</svg>
-									{/if}
-								</button>
-								{#if isExpanded}
-									<div class="space-y-1 border-t border-cyan-500/10 px-2.5 py-1.5">
-										{#if msg.toolArgs}
-											<p class="font-mono text-xs break-all text-cyan-300/60">
-												{msg.toolArgs}
-											</p>
-										{/if}
-										{#if msg.toolStatus === 'done' && msg.content}
-											<p
-												class="max-h-40 overflow-y-auto text-xs leading-relaxed whitespace-pre-wrap text-[var(--color-text-muted)]"
-											>
-												{msg.content}
-											</p>
-										{/if}
-									</div>
-								{/if}
-							</div>
-						{:else if msg.role === 'tool'}
-							{@const isExpanded = expandedTools.has(idx)}
-							{@const toolSummary = (() => {
-								try {
-									const args = JSON.parse(msg.toolArgs ?? '{}');
-									if (msg.toolName === 'fetch_url' && args.url) return args.url;
-									if (msg.toolName === 'web_search' && args.query) return `"${args.query}"`;
-									return '';
-								} catch {
-									return '';
-								}
-							})()}
-							<div
-								class="max-w-[90%] rounded-lg border border-l-2 border-[var(--color-border)] border-l-cyan-500/40 bg-[var(--color-elevated)]"
-							>
-								<button
-									onclick={() => toggleTool(idx)}
-									class="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
-								>
-									<svg
-										class="h-3 w-3 shrink-0 text-cyan-400 transition-transform {isExpanded
-											? 'rotate-90'
-											: ''}"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-										stroke-width="2"
-									>
-										<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-									</svg>
-									<svg
-										class="h-3 w-3 shrink-0 text-cyan-400/70"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-										stroke-width="1.5"
-									>
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											d="M11.42 15.17l-5.09-5.09a3.004 3.004 0 010-4.25 3.004 3.004 0 014.25 0l.34.34.34-.34a3.004 3.004 0 014.25 0 3.004 3.004 0 010 4.25l-5.09 5.09zM21.17 8.04l-4.25-4.25a2 2 0 00-2.83 0L12 5.88l-2.09-2.09a2 2 0 00-2.83 0L2.83 8.04a2 2 0 000 2.83L12 20l9.17-9.13a2 2 0 000-2.83z"
-										/>
-									</svg>
-									<span class="text-xs font-medium text-cyan-400/80"
-										>{msg.toolName ?? 'Tool result'}</span
-									>
-									{#if toolSummary}
-										<span class="min-w-0 truncate text-xs text-[var(--color-text-muted)]"
-											>{toolSummary}</span
-										>
-									{/if}
-									<svg
-										class="h-3 w-3 shrink-0 text-emerald-400"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-										stroke-width="2"
-									>
-										<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-									</svg>
-								</button>
-								{#if isExpanded}
-									<div class="space-y-1 border-t border-cyan-500/10 px-2.5 py-1.5">
-										{#if msg.toolArgs}
-											<p class="font-mono text-xs break-all text-cyan-300/60">
-												{msg.toolArgs}
-											</p>
-										{/if}
-										<p
-											class="max-h-40 overflow-y-auto text-xs leading-relaxed whitespace-pre-wrap text-[var(--color-text-muted)]"
-										>
-											{msg.content}
-										</p>
-									</div>
-								{/if}
-							</div>
-						{:else if msg.role === 'assistant'}
-							{@const isWaiting = !msg.content && streaming && idx === messages.length - 1}
-							{@const segments = parseThinking(msg.content || (isWaiting ? '...' : ''))}
-							<div class="max-w-[90%] space-y-2">
-								{#if isWaiting}
-									<div
-										class="flex items-center gap-2 rounded-2xl rounded-bl-sm border border-[var(--color-border)] bg-[var(--color-elevated)] px-4 py-3"
-									>
-										<span class="thinking-dots flex gap-1">
-											<span class="h-2 w-2 rounded-full bg-[var(--color-text-muted)]"></span>
-											<span class="h-2 w-2 rounded-full bg-[var(--color-text-muted)]"></span>
-											<span class="h-2 w-2 rounded-full bg-[var(--color-text-muted)]"></span>
-										</span>
-									</div>
-								{/if}
-								{#each isWaiting ? [] : segments as segment, segIdx}
-									{#if segment.type === 'thinking'}
-										{@const isLast = idx === messages.length - 1}
-										{@const isCollapsed =
-											isLast && streaming ? false : !expandedThinking.has(idx * 100 + segIdx)}
-										<div class="rounded-lg border border-amber-500/15 bg-amber-500/5">
-											<button
-												onclick={() => toggleThinking(idx * 100 + segIdx)}
-												class="flex w-full items-center gap-2 px-3 py-2 text-left"
-											>
-												<svg
-													class="h-3 w-3 shrink-0 text-amber-400 transition-transform {isCollapsed
-														? ''
-														: 'rotate-90'}"
-													fill="none"
-													stroke="currentColor"
-													viewBox="0 0 24 24"
-													stroke-width="2"
-												>
-													<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-												</svg>
-												<span class="text-xs font-medium text-amber-400">Thinking</span>
-												{#if isCollapsed}
-													<span class="truncate text-xs text-amber-400/50"
-														>{segment.content.slice(0, 80)}...</span
-													>
-												{/if}
-											</button>
-											{#if !isCollapsed}
-												<div class="border-t border-amber-500/10 px-3 py-2">
-													<p class="text-xs leading-relaxed whitespace-pre-wrap text-amber-200/60">
-														{segment.content}
-													</p>
-												</div>
-											{/if}
-										</div>
-									{:else}
-										<div
-											class="chat-message assistant-content rounded-2xl rounded-bl-sm border border-[var(--color-border)] bg-[var(--color-elevated)] px-4 py-3"
-										>
-											{@html renderMarkdown(segment.content)}
-										</div>
-									{/if}
-								{/each}
-							</div>
-						{/if}
-					{/each}
-				</div>
-			{/if}
-		</div>
-
-		<!-- Input area -->
-		<div class="border-t border-[var(--color-border)] px-4 py-3">
-			{#if modelDeleted}
-				<div class="mx-auto flex max-w-3xl flex-col items-center gap-2 py-4">
-					<p class="text-sm text-red-400">This conversation's model has been removed.</p>
-					<a
-						href="/models"
-						class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-accent)] transition-colors hover:border-[var(--color-accent)]/30"
-					>
-						Go to Models
-					</a>
-				</div>
-			{:else if modelMismatch && activeConversation?.model_id}
-				<div class="mx-auto flex max-w-3xl flex-col items-center gap-2 py-4">
-					<p class="text-sm text-[var(--color-text-muted)]">
-						This conversation uses
-						<span class="font-mono text-[var(--color-text-secondary)]"
-							>{activeConversation.model_name}</span
+		<ChatPanel
+			bind:this={chatPanelRef}
+			bind:messages
+			bind:input
+			bind:streaming
+			activeConversationId={activeConversation?.id ?? null}
+			{serverInfo}
+			{tokenUsage}
+			collapsibleThinking={true}
+			showApprovals={false}
+			disabled={streaming || serverInfo?.status !== 'ready' || modelMismatch || modelDeleted}
+			placeholder={serverInfo?.status === 'ready'
+				? 'Message...'
+				: serverInfo?.status === 'starting'
+					? 'Loading model...'
+					: 'Load a model first...'}
+			onsend={sendMessage}
+			onstop={stopGeneration}
+			onsaveEdit={handleSaveEdit}
+		>
+			{#snippet inputHeader()}
+				{#if modelDeleted}
+					<div class="mx-auto flex max-w-3xl flex-col items-center gap-2 py-4">
+						<p class="text-sm text-red-400">This conversation's model has been removed.</p>
+						<a
+							href="/models"
+							class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-accent)] transition-colors hover:border-[var(--color-accent)]/30"
 						>
-					</p>
-					<button
-						onclick={() => launchModel(activeConversation!.model_id!)}
-						disabled={isLaunching}
-						class="rounded-lg bg-[var(--color-accent-dim)] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent)] disabled:opacity-50"
-					>
-						{#if isLaunching}
-							Launching...
-						{:else}
-							Launch {activeConversation.model_name}
+							Go to Models
+						</a>
+					</div>
+				{:else if modelMismatch && activeConversation?.model_id}
+					<div class="mx-auto flex max-w-3xl flex-col items-center gap-2 py-4">
+						<p class="text-sm text-[var(--color-text-muted)]">
+							This conversation uses
+							<span class="font-mono text-[var(--color-text-secondary)]"
+								>{activeConversation.model_name}</span
+							>
+						</p>
+						<button
+							onclick={() => launchModel(activeConversation!.model_id!)}
+							disabled={isLaunching}
+							class="rounded-lg bg-[var(--color-accent-dim)] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent)] disabled:opacity-50"
+						>
+							{#if isLaunching}
+								Launching...
+							{:else}
+								Launch {activeConversation.model_name}
+							{/if}
+						</button>
+						{#if modelError}
+							<p class="text-xs text-red-400">{modelError}</p>
 						{/if}
-					</button>
-					{#if modelError}
-						<p class="text-xs text-red-400">{modelError}</p>
-					{/if}
-				</div>
-			{:else}
-				{#if !activeConversationId}
+					</div>
+				{:else if !activeConversationId}
 					<div class="mx-auto mb-2 max-w-3xl">
 						{#if availableModels.length > 0}
 							<select
@@ -2114,6 +1523,16 @@
 						{/if}
 					</div>
 				{/if}
+			{/snippet}
+			{#snippet inputPrefix()}
+				<input
+					bind:this={imageInputEl}
+					type="file"
+					accept="image/*"
+					multiple
+					class="hidden"
+					onchange={handleImageSelect}
+				/>
 				{#if pendingImages.length > 0}
 					<div class="mx-auto mb-2 flex max-w-3xl flex-wrap gap-2">
 						{#each pendingImages as img, i (img.name + i)}
@@ -2132,207 +1551,42 @@
 						{/each}
 					</div>
 				{/if}
-				<input
-					bind:this={imageInputEl}
-					type="file"
-					accept="image/*"
-					multiple
-					class="hidden"
-					onchange={handleImageSelect}
-				/>
-				<div class="mx-auto flex max-w-3xl gap-2">
-					<button
-						onclick={() => imageInputEl?.click()}
-						disabled={streaming || serverInfo?.status !== 'ready'}
-						class="shrink-0 self-end rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-2.5 py-2.5 text-[var(--color-text-muted)] transition-colors hover:border-[var(--color-accent)]/30 hover:text-[var(--color-text-secondary)] disabled:opacity-30"
-						title="Attach images"
-						aria-label="Attach images"
+				<button
+					onclick={() => imageInputEl?.click()}
+					disabled={streaming || serverInfo?.status !== 'ready'}
+					class="shrink-0 self-end rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-2.5 py-2.5 text-[var(--color-text-muted)] transition-colors hover:border-[var(--color-accent)]/30 hover:text-[var(--color-text-secondary)] disabled:opacity-30"
+					title="Attach images"
+					aria-label="Attach images"
+				>
+					<svg
+						class="h-4 w-4"
+						fill="none"
+						stroke="currentColor"
+						viewBox="0 0 24 24"
+						stroke-width="1.5"
 					>
-						<svg
-							class="h-4 w-4"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-							stroke-width="1.5"
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+						/>
+					</svg>
+				</button>
+			{/snippet}
+			{#snippet inputSuffix()}
+				{#if input.length > 0}
+					<div class="mx-auto mt-1 max-w-3xl">
+						<span class="font-mono text-xs text-[var(--color-text-muted)]"
+							>~{inputTokenEstimate} tokens</span
 						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-							/>
-						</svg>
-					</button>
-					<textarea
-						bind:this={textareaEl}
-						bind:value={input}
-						onkeydown={handleKeydown}
-						placeholder={serverInfo?.status === 'ready' ? 'Message...' : 'Load a model first...'}
-						rows="1"
-						disabled={streaming || serverInfo?.status !== 'ready'}
-						class="max-h-[160px] min-h-[40px] flex-1 resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] transition-colors focus:border-[var(--color-accent)] focus:outline-none disabled:opacity-50"
-					></textarea>
-
-					{#if streaming}
-						<button
-							onclick={stopGeneration}
-							class="shrink-0 self-end rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
-							>Stop</button
-						>
-					{:else}
-						<button
-							onclick={sendMessage}
-							disabled={(!input.trim() && pendingImages.length === 0) ||
-								serverInfo?.status !== 'ready'}
-							class="shrink-0 self-end rounded-lg bg-[var(--color-accent-dim)] px-4 py-2.5 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent)] disabled:opacity-30"
-							>Send</button
-						>
-					{/if}
-				</div>
-			{/if}
-			{#if input.length > 0}
-				<div class="mx-auto mt-1 max-w-3xl">
-					<span class="font-mono text-xs text-[var(--color-text-muted)]"
-						>~{inputTokenEstimate} tokens</span
-					>
-				</div>
-			{/if}
-			{#if tokenUsage}
-				{@const ctxSize = serverInfo?.contextSize ?? 0}
-				{@const usagePercent = ctxSize > 0 ? Math.round((tokenUsage.total / ctxSize) * 100) : 0}
-				<div class="mx-auto mt-2 flex max-w-3xl items-center gap-3">
-					{#if ctxSize > 0}
-						<div class="h-1 flex-1 overflow-hidden rounded-full bg-[var(--color-surface)]">
-							<div
-								class="h-full rounded-full transition-all {usagePercent > 90
-									? 'bg-red-400'
-									: usagePercent > 70
-										? 'bg-amber-400'
-										: 'bg-[var(--color-accent)]'}"
-								style="width: {Math.min(usagePercent, 100)}%"
-							></div>
-						</div>
-					{/if}
-					<span class="shrink-0 font-mono text-xs text-[var(--color-text-muted)]">
-						{tokenUsage.total.toLocaleString()}{ctxSize > 0 ? ` / ${ctxSize.toLocaleString()}` : ''} tokens
-						<span class="text-[var(--color-text-muted)]/60"
-							>({tokenUsage.prompt.toLocaleString()}p + {tokenUsage.completion.toLocaleString()}c)</span
-						>
-					</span>
-				</div>
-			{/if}
-		</div>
+					</div>
+				{/if}
+			{/snippet}
+		</ChatPanel>
 	</div>
 </div>
 
 <style>
-	.thinking-dots span {
-		animation: thinking-bounce 1.4s infinite ease-in-out;
-	}
-	.thinking-dots span:nth-child(1) {
-		animation-delay: 0s;
-	}
-	.thinking-dots span:nth-child(2) {
-		animation-delay: 0.2s;
-	}
-	.thinking-dots span:nth-child(3) {
-		animation-delay: 0.4s;
-	}
-	@keyframes thinking-bounce {
-		0%,
-		80%,
-		100% {
-			opacity: 0.3;
-			transform: scale(0.8);
-		}
-		40% {
-			opacity: 1;
-			transform: scale(1);
-		}
-	}
-	:global(.user-content a) {
-		color: white;
-		text-decoration: underline;
-		text-underline-offset: 2px;
-		text-decoration-thickness: 1px;
-		opacity: 0.9;
-	}
-	:global(.user-content a:hover) {
-		opacity: 1;
-	}
-	:global(.assistant-content .code-block) {
-		margin: 0.75rem 0;
-		border-radius: 0.5rem;
-		overflow: hidden;
-		border: 1px solid var(--color-border);
-		background: #0d1117;
-	}
-	:global(.assistant-content .code-block .code-header) {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0.25rem 0.75rem;
-		font-size: 0.65rem;
-		color: var(--color-text-muted);
-		background: rgba(255, 255, 255, 0.03);
-		border-bottom: 1px solid var(--color-border);
-		font-family: ui-monospace, monospace;
-	}
-	:global(.assistant-content .code-block .code-copy) {
-		background: none;
-		border: none;
-		color: var(--color-text-muted);
-		font-size: 0.65rem;
-		cursor: pointer;
-		padding: 0.1rem 0.4rem;
-		border-radius: 0.25rem;
-		font-family: inherit;
-	}
-	:global(.assistant-content .code-block .code-copy:hover) {
-		color: var(--color-text-secondary);
-		background: rgba(255, 255, 255, 0.06);
-	}
-	:global(.assistant-content .code-content) {
-		margin: 0;
-		padding: 0.5rem 0.75rem 0.5rem 0;
-		font-size: 0.8rem;
-		line-height: 1.4;
-		overflow-x: auto;
-	}
-	:global(.assistant-content .code-content code) {
-		background: none;
-		padding: 0;
-		counter-reset: line;
-	}
-	:global(.assistant-content .code-content code .line) {
-		display: block;
-	}
-	:global(.assistant-content .code-content code .line::before) {
-		counter-increment: line;
-		content: counter(line);
-		display: inline-block;
-		width: 3ch;
-		margin-right: 1rem;
-		padding-right: 0.5rem;
-		text-align: right;
-		color: var(--color-text-muted);
-		opacity: 0.35;
-		border-right: 1px solid var(--color-border);
-		user-select: none;
-		-webkit-user-select: none;
-	}
-	:global(.assistant-content .code-block .hljs) {
-		background: none;
-	}
-	:global(.assistant-content a) {
-		color: var(--color-accent);
-		text-decoration: underline;
-		text-decoration-color: var(--color-accent);
-		text-underline-offset: 2px;
-		text-decoration-thickness: 1px;
-	}
-	:global(.assistant-content a:hover) {
-		text-decoration-thickness: 2px;
-	}
 	.sampling-range {
 		-webkit-appearance: none;
 		appearance: none;
@@ -2362,109 +1616,5 @@
 		height: 4px;
 		border-radius: 2px;
 		background: var(--color-surface);
-	}
-
-	/* Markdown rendering styles */
-	:global(.chat-message) {
-		font-size: 0.875rem;
-		line-height: 1.625;
-		color: var(--color-text-secondary);
-	}
-	:global(.chat-message p) {
-		margin-bottom: 0.5rem;
-	}
-	:global(.chat-message p:last-child) {
-		margin-bottom: 0;
-	}
-	:global(.chat-message strong) {
-		color: var(--color-text-primary);
-		font-weight: 600;
-	}
-	:global(.chat-message em) {
-		font-style: italic;
-	}
-	:global(.chat-message code) {
-		font-family: var(--font-mono);
-		font-size: 0.8125rem;
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: 4px;
-		padding: 0.125rem 0.375rem;
-	}
-	:global(.chat-message pre) {
-		background: var(--color-base);
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		padding: 0.75rem 1rem;
-		margin: 0.5rem 0;
-		overflow-x: auto;
-	}
-	:global(.chat-message pre code) {
-		background: none;
-		border: none;
-		padding: 0;
-		font-size: 0.8125rem;
-		line-height: 1.5;
-		color: var(--color-text-primary);
-	}
-	:global(.chat-message ul),
-	:global(.chat-message ol) {
-		padding-left: 1.25rem;
-		margin: 0.5rem 0;
-	}
-	:global(.chat-message li) {
-		margin-bottom: 0.25rem;
-	}
-	:global(.chat-message ul li) {
-		list-style-type: disc;
-	}
-	:global(.chat-message ol li) {
-		list-style-type: decimal;
-	}
-	:global(.chat-message h1),
-	:global(.chat-message h2),
-	:global(.chat-message h3) {
-		color: var(--color-text-primary);
-		font-weight: 600;
-		margin-top: 1rem;
-		margin-bottom: 0.5rem;
-	}
-	:global(.chat-message h1) {
-		font-size: 1.125rem;
-	}
-	:global(.chat-message h2) {
-		font-size: 1rem;
-	}
-	:global(.chat-message h3) {
-		font-size: 0.875rem;
-	}
-	:global(.chat-message blockquote) {
-		border-left: 3px solid var(--color-accent);
-		padding-left: 0.75rem;
-		margin: 0.5rem 0;
-		color: var(--color-text-muted);
-	}
-	:global(.chat-message a) {
-		color: var(--color-accent);
-		text-decoration: underline;
-	}
-	:global(.chat-message hr) {
-		border-color: var(--color-border);
-		margin: 0.75rem 0;
-	}
-	:global(.chat-message table) {
-		border-collapse: collapse;
-		margin: 0.5rem 0;
-		font-size: 0.8125rem;
-	}
-	:global(.chat-message th),
-	:global(.chat-message td) {
-		border: 1px solid var(--color-border);
-		padding: 0.375rem 0.625rem;
-	}
-	:global(.chat-message th) {
-		background: var(--color-surface);
-		color: var(--color-text-primary);
-		font-weight: 600;
 	}
 </style>

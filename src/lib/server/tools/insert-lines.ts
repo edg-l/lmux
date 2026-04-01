@@ -5,13 +5,14 @@ export async function insertProjectLines(
 	projectRoot: string
 ): Promise<{
 	result: string;
+	error?: boolean;
 	fileChanged?: { path: string; operation: 'modified' };
 }> {
 	const resolved = resolveProjectPath(projectRoot, args.path);
 	const file = Bun.file(resolved);
 
 	if (!(await file.exists())) {
-		return { result: `File not found: ${args.path}` };
+		return { result: `File not found: ${args.path}`, error: true };
 	}
 
 	const text = await file.text();

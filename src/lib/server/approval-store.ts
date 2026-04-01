@@ -40,3 +40,32 @@ export function cleanupApproval(requestId: string): void {
 		entry.resolve('denied');
 	}
 }
+
+// Sandbox path resolution store
+export type SandboxResult = 'allowed' | 'dismissed' | 'timeout';
+
+interface PendingSandbox {
+	resolve: (result: SandboxResult) => void;
+	timer: Timer;
+}
+
+const pendingSandbox = new Map<string, PendingSandbox>();
+
+export function requestSandboxResolution(requestId: string): Promise<SandboxResult> {
+	return new Promise((resolve) => {
+		const timer = setTimeout(() => {
+			pendingSandbox.delete(requestId);
+			resolve('timeout');
+		}, APPROVAL_TIMEOUT);
+		pendingSandbox.set(requestId, { resolve, timer });
+	});
+}
+
+export function resolveSandboxRequest(requestId: string, allowed: boolean): boolean {
+	const entry = pendingSandbox.get(requestId);
+	if (!entry) return false;
+	clearTimeout(entry.timer);
+	pendingSandbox.delete(requestId);
+	entry.resolve(allowed ? 'allowed' : 'dismissed');
+	return true;
+}

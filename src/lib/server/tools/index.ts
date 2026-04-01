@@ -23,6 +23,7 @@ export interface ToolDefinition {
 
 export interface ToolResult {
 	result: string;
+	error?: boolean;
 	fileChanged?: { path: string; operation: 'created' | 'modified' };
 	blockedPaths?: string[];
 }
@@ -32,14 +33,15 @@ const codingToolDefinitions: ToolDefinition[] = [
 		type: 'function',
 		function: {
 			name: 'read_file',
-			description: 'Read a file from the project. Returns content with line numbers.',
+			description:
+				'Read a file from the project. Returns line-numbered content. For large files, use offset and limit to paginate (e.g. offset=200, limit=200 for the next page). The response header shows [lines X-Y of TOTAL] so you know if more content remains. You MUST read a file before editing it.',
 			parameters: {
 				type: 'object',
 				properties: {
 					path: { type: 'string', description: 'Relative path to the file' },
 					offset: {
 						type: 'integer',
-						description: 'Line offset to start reading from (default 0)'
+						description: 'Line offset to start reading from (0-indexed, default 0)'
 					},
 					limit: {
 						type: 'integer',
@@ -55,7 +57,7 @@ const codingToolDefinitions: ToolDefinition[] = [
 		function: {
 			name: 'write_file',
 			description:
-				'Creates a new file or overwrites an existing file entirely. For modifying existing files, prefer edit_file.',
+				'Creates a new file or overwrites an existing file entirely. Only use for new files or complete rewrites. For modifying existing files, use edit_file instead.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -71,7 +73,7 @@ const codingToolDefinitions: ToolDefinition[] = [
 		function: {
 			name: 'edit_file',
 			description:
-				'Edit a file by replacing occurrences of a string. More precise than write_file for modifications.',
+				'Edit a file by replacing occurrences of a string. More precise than write_file for modifications. Returns a diff showing the change.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -91,16 +93,17 @@ const codingToolDefinitions: ToolDefinition[] = [
 		type: 'function',
 		function: {
 			name: 'insert_lines',
-			description: 'Insert lines at a specific line number in a file.',
+			description:
+				'Insert text at a specific line number in a file without replacing existing content. Use read_file first to find the correct line number. Line numbers match the output of read_file.',
 			parameters: {
 				type: 'object',
 				properties: {
 					path: { type: 'string', description: 'Relative path to the file' },
 					line: {
 						type: 'integer',
-						description: 'Line number to insert at (0 = beginning)'
+						description: 'Line number to insert before (0 = beginning of file)'
 					},
-					content: { type: 'string', description: 'The content to insert' }
+					content: { type: 'string', description: 'The text to insert' }
 				},
 				required: ['path', 'line', 'content']
 			}
@@ -110,7 +113,8 @@ const codingToolDefinitions: ToolDefinition[] = [
 		type: 'function',
 		function: {
 			name: 'list_directory',
-			description: 'List files and directories in a tree format, respecting .gitignore.',
+			description:
+				'List files and directories in a tree format, respecting .gitignore. Use this first to understand the project structure before reading or editing files. Increase depth to explore deeper subdirectories.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -131,14 +135,18 @@ const codingToolDefinitions: ToolDefinition[] = [
 		type: 'function',
 		function: {
 			name: 'search_files',
-			description: 'Search for a regex pattern in project files using ripgrep.',
+			description:
+				'Search for a regex pattern across project files using ripgrep. Returns matching lines with file paths and line numbers (max 50 results). Use this to find where functions, classes, variables, or strings are defined or used. Use the glob parameter to narrow results to specific file types.',
 			parameters: {
 				type: 'object',
 				properties: {
-					pattern: { type: 'string', description: 'Regex pattern to search for' },
+					pattern: {
+						type: 'string',
+						description: 'Regex pattern to search for (e.g. "function main", "TODO", "import.*react")'
+					},
 					glob: {
 						type: 'string',
-						description: 'Glob pattern to filter files (e.g. "*.ts")'
+						description: 'Glob pattern to filter files (e.g. "*.ts", "*.py", "src/**/*.js")'
 					},
 					path: {
 						type: 'string',
@@ -153,7 +161,8 @@ const codingToolDefinitions: ToolDefinition[] = [
 		type: 'function',
 		function: {
 			name: 'run_command',
-			description: 'Run a shell command in the project directory.',
+			description:
+				'Run a shell command in the project directory. The command runs in a sandbox with read-only access to the system and read-write access to the project. Output is truncated to max_length; use offset to read more if the output says "[truncated]". Use this to build, test, lint, and verify changes.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -164,11 +173,12 @@ const codingToolDefinitions: ToolDefinition[] = [
 					},
 					offset: {
 						type: 'integer',
-						description: 'Character offset to start reading output from'
+						description:
+							'Character offset to start reading output from. Use when previous output was truncated.'
 					},
 					max_length: {
 						type: 'integer',
-						description: 'Maximum output length in bytes (default 8192)'
+						description: 'Maximum output length in characters (default 8192)'
 					}
 				},
 				required: ['command']
