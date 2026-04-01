@@ -4,10 +4,20 @@
 	import katex from 'katex';
 	import { onMount, tick } from 'svelte';
 
+	interface ToolCallData {
+		id: string;
+		function: { name: string; arguments: string };
+	}
+
 	interface Message {
 		id?: number;
 		role: string;
 		content: string;
+		tool_calls?: ToolCallData[] | null;
+		tool_call_id?: string | null;
+		toolName?: string;
+		toolArgs?: string;
+		toolStatus?: 'running' | 'done';
 	}
 
 	interface Conversation {
@@ -76,11 +86,74 @@
 	// Thinking block expansion tracking (collapsed by default, set tracks *expanded* ones)
 	let expandedThinking = $state<Set<number>>(new Set());
 
+	// Tool calling state
+	let toolsEnabled = $state(true);
+	let expandedTools = $state<Set<number>>(new Set());
+
 	onMount(() => {
 		loadConversations();
+		loadToolsEnabled();
 		const cleanupServerInfo = loadServerInfo();
 		return () => cleanupServerInfo();
 	});
+
+	async function loadToolsEnabled() {
+		try {
+			const res = await fetch('/api/settings');
+			if (res.ok) {
+				const settings = await res.json();
+				toolsEnabled = settings.tools_enabled !== 'false';
+			}
+		} catch {
+			// default true
+		}
+	}
+
+	async function toggleTools() {
+		toolsEnabled = !toolsEnabled;
+		try {
+			await fetch('/api/settings', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ key: 'tools_enabled', value: toolsEnabled ? 'true' : 'false' })
+			});
+		} catch {
+			// revert on failure
+			toolsEnabled = !toolsEnabled;
+		}
+	}
+
+	/** Enrich tool messages loaded from DB with tool name/args from the preceding assistant's tool_calls */
+	function enrichToolMessages(msgs: Message[]): Message[] {
+		const toolCallMap = new Map<string, ToolCallData>();
+		return msgs.map((msg) => {
+			if (msg.role === 'assistant' && msg.tool_calls) {
+				for (const tc of msg.tool_calls) {
+					toolCallMap.set(tc.id, tc);
+				}
+			}
+			if (msg.role === 'tool' && msg.tool_call_id) {
+				const tc = toolCallMap.get(msg.tool_call_id);
+				return {
+					...msg,
+					toolName: tc?.function.name ?? 'tool',
+					toolArgs: tc?.function.arguments,
+					toolStatus: 'done' as const
+				};
+			}
+			return msg;
+		});
+	}
+
+	function toggleTool(key: number) {
+		const next = new Set(expandedTools);
+		if (next.has(key)) {
+			next.delete(key);
+		} else {
+			next.add(key);
+		}
+		expandedTools = next;
+	}
 
 	$effect(() => {
 		if (messagesContainer && messages.length > 0) {
@@ -174,7 +247,7 @@
 			const res = await fetch(`/api/conversations/${id}`);
 			if (res.ok) {
 				const data = await res.json();
-				messages = data.messages ?? [];
+				messages = enrichToolMessages(data.messages ?? []);
 			}
 		} catch {
 			messages = [];
@@ -205,12 +278,32 @@
 		return data.id;
 	}
 
-	async function saveMessage(conversationId: number, role: string, content: string) {
-		await fetch(`/api/conversations/${conversationId}/messages`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ role, content })
-		});
+	async function saveMessage(
+		conversationId: number,
+		role: string,
+		content: string,
+		opts?: { toolCallId?: string; toolCalls?: string; tokenCount?: number }
+	): Promise<number | null> {
+		try {
+			const res = await fetch(`/api/conversations/${conversationId}/messages`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					role,
+					content,
+					...(opts?.toolCallId && { toolCallId: opts.toolCallId }),
+					...(opts?.toolCalls && { toolCalls: opts.toolCalls }),
+					...(opts?.tokenCount != null && { tokenCount: opts.tokenCount })
+				})
+			});
+			if (res.ok) {
+				const data = await res.json();
+				return data.id;
+			}
+		} catch {
+			// ignore save failures
+		}
+		return null;
 	}
 
 	async function sendMessage() {
@@ -226,18 +319,38 @@
 		const controller = new AbortController();
 		abortController = controller;
 
+		// Track tool messages to persist after stream ends
+		const pendingToolMessages: Array<{
+			role: string;
+			content: string;
+			toolCalls?: string;
+			toolCallId?: string;
+		}> = [];
+		// Map tool_call id to the index in messages array for status updates
+		const toolStatusIndices = new Map<string, number>();
+
 		try {
+			const allowedRoles = new Set(['user', 'assistant', 'tool', 'system']);
 			const chatMessages = messages
-				.slice(0, -1) // exclude the empty assistant placeholder we just added
-				.filter((m) => m.content)
-				.map((m) => ({ role: m.role, content: m.content }));
+				.slice(0, -1) // exclude empty assistant placeholder
+				.filter((m) => allowedRoles.has(m.role))
+				.map((m) => {
+					const msg: Record<string, unknown> = { role: m.role, content: m.content };
+					if (m.tool_calls) msg.tool_calls = m.tool_calls;
+					if (m.tool_call_id) {
+						msg.role = 'tool';
+						msg.tool_call_id = m.tool_call_id;
+					}
+					return msg;
+				});
 
 			const res = await fetch('/api/chat', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					messages: chatMessages,
-					sampling: { temperature, top_p, top_k, min_p, repeat_penalty }
+					sampling: { temperature, top_p, top_k, min_p, repeat_penalty },
+					tools_enabled: toolsEnabled
 				}),
 				signal: controller.signal
 			});
@@ -262,6 +375,9 @@
 
 			const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
 			let buffer = '';
+			// Track accumulated tool_calls for the current assistant message
+			let currentToolCalls: ToolCallData[] = [];
+
 			while (true) {
 				const { done, value } = await reader.read();
 				if (done) break;
@@ -274,17 +390,70 @@
 					if (data === '[DONE]') continue;
 					try {
 						const parsed = JSON.parse(data);
-						const delta = parsed.choices?.[0]?.delta?.content;
-						if (delta) {
+
+						if (parsed.type === 'delta') {
 							messages = messages.map((m, i) =>
-								i === messages.length - 1 ? { ...m, content: m.content + delta } : m
+								i === messages.length - 1 ? { ...m, content: m.content + parsed.content } : m
 							);
-						}
-						if (parsed.usage) {
+						} else if (parsed.type === 'tool_call') {
+							const tc: ToolCallData = {
+								id: parsed.id,
+								function: { name: parsed.name, arguments: parsed.arguments }
+							};
+							currentToolCalls.push(tc);
+
+							// Add a tool_status message for the UI
+							const statusIdx = messages.length;
+							toolStatusIndices.set(parsed.id, statusIdx);
+							messages = [
+								...messages,
+								{
+									role: 'tool_status',
+									content: '',
+									toolName: parsed.name,
+									toolArgs: parsed.arguments,
+									toolStatus: 'running',
+									tool_call_id: parsed.id
+								}
+							];
+						} else if (parsed.type === 'tool_result') {
+							const statusIdx = toolStatusIndices.get(parsed.id);
+							if (statusIdx !== undefined) {
+								messages = messages.map((m, i) =>
+									i === statusIdx
+										? { ...m, content: parsed.content, toolStatus: 'done' as const }
+										: m
+								);
+							}
+
+							// Save the tool_calls assistant message if this is the first result
+							// (all tool_calls were emitted before any tool_result)
+							if (currentToolCalls.length > 0) {
+								// Find the last real assistant message (not tool_status)
+								const lastAssistant = messages[messages.length - currentToolCalls.length - 1];
+								const assistantContent =
+									lastAssistant?.role === 'assistant' ? lastAssistant.content : '';
+								pendingToolMessages.push({
+									role: 'assistant',
+									content: assistantContent,
+									toolCalls: JSON.stringify(currentToolCalls)
+								});
+								currentToolCalls = [];
+							}
+
+							pendingToolMessages.push({
+								role: 'tool',
+								content: parsed.content,
+								toolCallId: parsed.id
+							});
+
+							// Add a new assistant placeholder for the next response
+							messages = [...messages, { role: 'assistant', content: '' }];
+						} else if (parsed.type === 'usage') {
 							tokenUsage = {
-								prompt: parsed.usage.prompt_tokens ?? 0,
-								completion: parsed.usage.completion_tokens ?? 0,
-								total: parsed.usage.total_tokens ?? 0
+								prompt: parsed.prompt_tokens ?? 0,
+								completion: parsed.completion_tokens ?? 0,
+								total: parsed.total_tokens ?? 0
 							};
 						}
 					} catch {
@@ -293,12 +462,31 @@
 				}
 			}
 
-			const finalContent = messages[messages.length - 1]?.content ?? '';
-			if (finalContent) saveMessage(conversationId, 'assistant', finalContent);
+			// Persist tool messages
+			for (const tm of pendingToolMessages) {
+				await saveMessage(conversationId, tm.role, tm.content, {
+					toolCalls: tm.toolCalls,
+					toolCallId: tm.toolCallId
+				});
+			}
+
+			// Persist final assistant message
+			const lastMsg = messages[messages.length - 1];
+			if (lastMsg?.role === 'assistant' && lastMsg.content) {
+				await saveMessage(conversationId, 'assistant', lastMsg.content);
+			}
 		} catch (err) {
 			if (err instanceof DOMException && err.name === 'AbortError') {
-				const partial = messages[messages.length - 1]?.content ?? '';
-				if (partial) saveMessage(conversationId, 'assistant', partial);
+				for (const tm of pendingToolMessages) {
+					await saveMessage(conversationId, tm.role, tm.content, {
+						toolCalls: tm.toolCalls,
+						toolCallId: tm.toolCallId
+					});
+				}
+				const lastMsg = messages[messages.length - 1];
+				if (lastMsg?.role === 'assistant' && lastMsg.content) {
+					await saveMessage(conversationId, 'assistant', lastMsg.content);
+				}
 			} else {
 				messages = messages.map((m, i) =>
 					i === messages.length - 1 ? { ...m, content: m.content || 'Error: Connection failed' } : m
@@ -572,6 +760,29 @@
 			{/if}
 
 			<button
+				onclick={toggleTools}
+				class="rounded p-1 transition-colors {toolsEnabled
+					? 'text-[var(--color-accent)]'
+					: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
+				aria-label="Toggle tools"
+				title={toolsEnabled ? 'Tools enabled' : 'Tools disabled'}
+			>
+				<svg
+					class="h-4 w-4"
+					fill="none"
+					stroke="currentColor"
+					viewBox="0 0 24 24"
+					stroke-width="1.5"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						d="M11.42 15.17l-5.09-5.09a3.004 3.004 0 010-4.25 3.004 3.004 0 014.25 0l.34.34.34-.34a3.004 3.004 0 014.25 0 3.004 3.004 0 010 4.25l-5.09 5.09zM21.17 8.04l-4.25-4.25a2 2 0 00-2.83 0L12 5.88l-2.09-2.09a2 2 0 00-2.83 0L2.83 8.04a2 2 0 000 2.83L12 20l9.17-9.13a2 2 0 000-2.83z"
+					/>
+				</svg>
+			</button>
+
+			<button
 				onclick={() => (samplingOpen = !samplingOpen)}
 				class="rounded p-1 transition-colors {samplingOpen
 					? 'text-[var(--color-accent)]'
@@ -675,11 +886,157 @@
 									<p class="text-sm whitespace-pre-wrap text-white">{msg.content}</p>
 								</div>
 							</div>
-						{:else}
+						{:else if msg.role === 'tool_status'}
+							{@const isExpanded = expandedTools.has(idx)}
+							<div class="max-w-[90%] rounded-lg border-l-2 border-cyan-500/40 bg-cyan-500/5">
+								<button
+									onclick={() => toggleTool(idx)}
+									class="flex w-full items-center gap-2 px-3 py-2 text-left"
+								>
+									<svg
+										class="h-3 w-3 shrink-0 text-cyan-400 transition-transform {isExpanded
+											? 'rotate-90'
+											: ''}"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										stroke-width="2"
+									>
+										<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+									</svg>
+									<svg
+										class="h-3.5 w-3.5 shrink-0 text-cyan-400"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										stroke-width="1.5"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											d="M11.42 15.17l-5.09-5.09a3.004 3.004 0 010-4.25 3.004 3.004 0 014.25 0l.34.34.34-.34a3.004 3.004 0 014.25 0 3.004 3.004 0 010 4.25l-5.09 5.09zM21.17 8.04l-4.25-4.25a2 2 0 00-2.83 0L12 5.88l-2.09-2.09a2 2 0 00-2.83 0L2.83 8.04a2 2 0 000 2.83L12 20l9.17-9.13a2 2 0 000-2.83z"
+										/>
+									</svg>
+									<span class="text-xs font-medium text-cyan-400">{msg.toolName ?? 'tool'}</span>
+									{#if msg.toolStatus === 'running'}
+										<span class="h-2 w-2 animate-pulse rounded-full bg-cyan-400"></span>
+									{:else}
+										<svg
+											class="h-3 w-3 text-emerald-400"
+											fill="none"
+											stroke="currentColor"
+											viewBox="0 0 24 24"
+											stroke-width="2"
+										>
+											<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+										</svg>
+									{/if}
+								</button>
+								{#if isExpanded}
+									<div class="space-y-1 border-t border-cyan-500/10 px-3 py-2">
+										{#if msg.toolArgs}
+											<p class="font-mono text-xs break-all text-cyan-300/60">
+												{msg.toolArgs}
+											</p>
+										{/if}
+										{#if msg.toolStatus === 'done' && msg.content}
+											<p
+												class="max-h-40 overflow-y-auto text-xs leading-relaxed whitespace-pre-wrap text-[var(--color-text-muted)]"
+											>
+												{msg.content}
+											</p>
+										{/if}
+									</div>
+								{/if}
+							</div>
+						{:else if msg.role === 'tool'}
+							{@const isExpanded = expandedTools.has(idx)}
+							<div class="max-w-[90%] rounded-lg border-l-2 border-cyan-500/40 bg-cyan-500/5">
+								<button
+									onclick={() => toggleTool(idx)}
+									class="flex w-full items-center gap-2 px-3 py-2 text-left"
+								>
+									<svg
+										class="h-3 w-3 shrink-0 text-cyan-400 transition-transform {isExpanded
+											? 'rotate-90'
+											: ''}"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										stroke-width="2"
+									>
+										<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+									</svg>
+									<svg
+										class="h-3.5 w-3.5 shrink-0 text-cyan-400"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										stroke-width="1.5"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											d="M11.42 15.17l-5.09-5.09a3.004 3.004 0 010-4.25 3.004 3.004 0 014.25 0l.34.34.34-.34a3.004 3.004 0 014.25 0 3.004 3.004 0 010 4.25l-5.09 5.09zM21.17 8.04l-4.25-4.25a2 2 0 00-2.83 0L12 5.88l-2.09-2.09a2 2 0 00-2.83 0L2.83 8.04a2 2 0 000 2.83L12 20l9.17-9.13a2 2 0 000-2.83z"
+										/>
+									</svg>
+									<span class="text-xs font-medium text-cyan-400"
+										>{msg.toolName ?? 'Tool result'}</span
+									>
+									<svg
+										class="h-3 w-3 text-emerald-400"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										stroke-width="2"
+									>
+										<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+									</svg>
+								</button>
+								{#if isExpanded}
+									<div class="space-y-1 border-t border-cyan-500/10 px-3 py-2">
+										{#if msg.toolArgs}
+											<p class="font-mono text-xs break-all text-cyan-300/60">
+												{msg.toolArgs}
+											</p>
+										{/if}
+										<p
+											class="max-h-40 overflow-y-auto text-xs leading-relaxed whitespace-pre-wrap text-[var(--color-text-muted)]"
+										>
+											{msg.content}
+										</p>
+									</div>
+								{/if}
+							</div>
+						{:else if msg.role === 'assistant'}
 							{@const segments = parseThinking(
 								msg.content || (streaming && idx === messages.length - 1 ? '...' : '')
 							)}
 							<div class="max-w-[90%] space-y-2">
+								{#if msg.tool_calls && msg.tool_calls.length > 0}
+									<div class="flex flex-wrap gap-1">
+										{#each msg.tool_calls as tc}
+											<span
+												class="inline-flex items-center gap-1 rounded-full border border-cyan-500/20 bg-cyan-500/5 px-2 py-0.5 text-xs text-cyan-400"
+											>
+												<svg
+													class="h-3 w-3"
+													fill="none"
+													stroke="currentColor"
+													viewBox="0 0 24 24"
+													stroke-width="1.5"
+												>
+													<path
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														d="M11.42 15.17l-5.09-5.09a3.004 3.004 0 010-4.25 3.004 3.004 0 014.25 0l.34.34.34-.34a3.004 3.004 0 014.25 0 3.004 3.004 0 010 4.25l-5.09 5.09z"
+													/>
+												</svg>
+												{tc.function.name}
+											</span>
+										{/each}
+									</div>
+								{/if}
 								{#each segments as segment, segIdx}
 									{#if segment.type === 'thinking'}
 										{@const isLast = idx === messages.length - 1}

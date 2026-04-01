@@ -5,6 +5,7 @@
 	let llamaServerPath = $state('');
 	let hfToken = $state('');
 	let hfTokenSource: string | null = $state(null);
+	let searxngUrl = $state('');
 	let loading = $state(true);
 	let saving = $state<Record<string, boolean>>({});
 	let saved = $state<Record<string, boolean>>({});
@@ -20,6 +21,7 @@
 				llamaServerPath = settings.llama_server_path ?? '';
 				hfToken = settings.hf_token ?? '';
 				hfTokenSource = settings.hf_token_source ?? null;
+				searxngUrl = settings.searxng_url ?? '';
 			}
 		} finally {
 			loading = false;
@@ -183,6 +185,33 @@
 						)}"
 					>
 						{saveButtonLabel('hf_token')}
+					</button>
+				</div>
+			</div>
+
+			<!-- SearXNG URL -->
+			<div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] p-5">
+				<h2 class="text-xs font-semibold tracking-wide text-[var(--color-text-muted)] uppercase">
+					SearXNG URL
+				</h2>
+				<p class="mt-1 mb-3 text-xs text-[var(--color-text-muted)]">
+					URL of a SearXNG instance for web search tool. Leave empty to disable web search.
+				</p>
+				<div class="flex gap-2">
+					<input
+						type="text"
+						bind:value={searxngUrl}
+						placeholder="http://localhost:8888"
+						class="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
+					/>
+					<button
+						onclick={() => saveSetting('searxng_url', searxngUrl)}
+						disabled={saving['searxng_url']}
+						class="rounded-md border bg-transparent px-3 py-2 text-xs font-medium transition-colors disabled:opacity-50 {saveButtonClass(
+							'searxng_url'
+						)}"
+					>
+						{saveButtonLabel('searxng_url')}
 					</button>
 				</div>
 			</div>

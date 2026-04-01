@@ -40,8 +40,10 @@ CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY,
     conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     role TEXT NOT NULL,
-    content TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
     token_count INTEGER,
+    tool_call_id TEXT,
+    tool_calls TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 

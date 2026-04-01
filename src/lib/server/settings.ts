@@ -10,7 +10,9 @@ const DEFAULTS: Record<string, string> = {
 	models_dir: DEFAULT_MODELS_DIR,
 	llama_server_path: '',
 	hf_token: '',
-	vram_headroom_mb: '512'
+	vram_headroom_mb: '512',
+	tools_enabled: 'true',
+	searxng_url: ''
 };
 
 export function getSetting(key: string): string {

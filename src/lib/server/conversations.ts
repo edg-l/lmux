@@ -8,12 +8,30 @@ export interface Conversation {
 	updated_at: string;
 }
 
+export interface ToolCallData {
+	id: string;
+	function: { name: string; arguments: string };
+}
+
+interface MessageRow {
+	id: number;
+	conversation_id: number;
+	role: string;
+	content: string;
+	token_count: number | null;
+	tool_call_id: string | null;
+	tool_calls: string | null;
+	created_at: string;
+}
+
 export interface Message {
 	id: number;
 	conversation_id: number;
 	role: string;
 	content: string;
 	token_count: number | null;
+	tool_call_id: string | null;
+	tool_calls: ToolCallData[] | null;
 	created_at: string;
 }
 
@@ -41,16 +59,20 @@ export function addMessage(
 	conversationId: number,
 	role: string,
 	content: string,
-	tokenCount?: number
+	tokenCount?: number,
+	toolCallId?: string,
+	toolCalls?: string
 ): number {
 	const result = execute(
-		`INSERT INTO messages (conversation_id, role, content, token_count)
-		 VALUES ($conversation_id, $role, $content, $token_count)`,
+		`INSERT INTO messages (conversation_id, role, content, token_count, tool_call_id, tool_calls)
+		 VALUES ($conversation_id, $role, $content, $token_count, $tool_call_id, $tool_calls)`,
 		{
 			$conversation_id: conversationId,
 			$role: role,
 			$content: content,
-			$token_count: tokenCount ?? null
+			$token_count: tokenCount ?? null,
+			$tool_call_id: toolCallId ?? null,
+			$tool_calls: toolCalls ?? null
 		}
 	);
 
@@ -63,10 +85,21 @@ export function addMessage(
 }
 
 export function getMessages(conversationId: number): Message[] {
-	return queryAll<Message>(
-		'SELECT * FROM messages WHERE conversation_id = $conversation_id ORDER BY created_at ASC',
+	const rows = queryAll<MessageRow>(
+		'SELECT * FROM messages WHERE conversation_id = $conversation_id ORDER BY created_at ASC, id ASC',
 		{ $conversation_id: conversationId }
 	);
+	return rows.map((row) => {
+		let toolCalls: ToolCallData[] | null = null;
+		if (row.tool_calls) {
+			try {
+				toolCalls = JSON.parse(row.tool_calls);
+			} catch {
+				toolCalls = null;
+			}
+		}
+		return { ...row, tool_calls: toolCalls };
+	});
 }
 
 export function updateConversationTitle(id: number, title: string): void {

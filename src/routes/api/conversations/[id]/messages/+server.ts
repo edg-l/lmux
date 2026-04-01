@@ -11,12 +11,26 @@ export const GET: RequestHandler = async ({ params }) => {
 export const POST: RequestHandler = async ({ params, request }) => {
 	const conversationId = parseInt(params.id);
 	if (isNaN(conversationId)) return json({ error: 'Invalid id' }, { status: 400 });
-	const body = (await request.json()) as { role: string; content: string; tokenCount?: number };
+	const body = (await request.json()) as {
+		role: string;
+		content?: string;
+		tokenCount?: number;
+		toolCallId?: string;
+		toolCalls?: string;
+	};
 
-	if (!body.role || !body.content) {
-		return json({ error: 'Missing role or content' }, { status: 400 });
+	const validRoles = new Set(['user', 'assistant', 'tool', 'system']);
+	if (!body.role || !validRoles.has(body.role)) {
+		return json({ error: 'Missing or invalid role' }, { status: 400 });
 	}
 
-	const id = addMessage(conversationId, body.role, body.content, body.tokenCount);
+	const id = addMessage(
+		conversationId,
+		body.role,
+		body.content ?? '',
+		body.tokenCount,
+		body.toolCallId,
+		body.toolCalls
+	);
 	return json({ id }, { status: 201 });
 };
