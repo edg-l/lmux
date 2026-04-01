@@ -66,11 +66,11 @@
 				},
 				code({ text, lang }) {
 					const trimmed = text.replace(/\s+$/, '');
-					// Wrap each line in a span for CSS counter line numbers
-					// Split on newlines while preserving hljs spans that may cross lines
+					const raw = trimmed.replace(/<[^>]+>/g, '');
+					const escaped = raw.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 					const lines = trimmed.split('\n').map((line) => `<span class="line">${line || ' '}</span>`).join('');
-					const langLabel = lang ? `<div class="code-lang">${lang}</div>` : '';
-					return `<div class="code-block">${langLabel}<pre class="code-content"><code class="hljs${lang ? ` language-${lang}` : ''}">${lines}</code></pre></div>`;
+					const header = `<div class="code-header"><span class="code-lang">${lang || ''}</span><button class="code-copy" onclick="(function(b){var t=b.closest('.code-block').querySelector('code');var r=t.innerText;navigator.clipboard.writeText(r);b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},1500)})(this)">Copy</button></div>`;
+					return `<div class="code-block">${header}<pre class="code-content"><code class="hljs${lang ? ` language-${lang}` : ''}" data-raw="${escaped}">${lines}</code></pre></div>`;
 				}
 			}
 		}
@@ -2401,13 +2401,30 @@
 		border: 1px solid var(--color-border);
 		background: #0d1117;
 	}
-	:global(.assistant-content .code-block .code-lang) {
+	:global(.assistant-content .code-block .code-header) {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
 		padding: 0.25rem 0.75rem;
 		font-size: 0.65rem;
 		color: var(--color-text-muted);
 		background: rgba(255, 255, 255, 0.03);
 		border-bottom: 1px solid var(--color-border);
 		font-family: ui-monospace, monospace;
+	}
+	:global(.assistant-content .code-block .code-copy) {
+		background: none;
+		border: none;
+		color: var(--color-text-muted);
+		font-size: 0.65rem;
+		cursor: pointer;
+		padding: 0.1rem 0.4rem;
+		border-radius: 0.25rem;
+		font-family: inherit;
+	}
+	:global(.assistant-content .code-block .code-copy:hover) {
+		color: var(--color-text-secondary);
+		background: rgba(255, 255, 255, 0.06);
 	}
 	:global(.assistant-content .code-content) {
 		margin: 0;
