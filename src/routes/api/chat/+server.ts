@@ -59,9 +59,16 @@ export const POST: RequestHandler = async ({ request }) => {
 	const stream = new ReadableStream({
 		async start(controller) {
 			try {
+				// Ensure all tool_calls have type: "function" (history from DB may lack it)
+				const normalized = body.messages.map((m) => {
+					if (m.tool_calls) {
+						return { ...m, tool_calls: m.tool_calls.map((tc) => ({ ...tc, type: 'function' as const })) };
+					}
+					return m;
+				});
 				const messages: ChatMessage[] = systemPrompt
-					? [{ role: 'system', content: systemPrompt }, ...body.messages]
-					: [...body.messages];
+					? [{ role: 'system', content: systemPrompt }, ...normalized]
+					: [...normalized];
 				let reachedLimit = true;
 
 				for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
