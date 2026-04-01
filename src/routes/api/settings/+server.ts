@@ -27,7 +27,14 @@ export const GET: RequestHandler = async () => {
 	});
 };
 
-const ALLOWED_KEYS = new Set(['models_dir', 'llama_server_path', 'hf_token', 'tools_enabled', 'searxng_url']);
+const ALLOWED_KEYS = new Set([
+	'models_dir',
+	'llama_server_path',
+	'hf_token',
+	'tools_enabled',
+	'searxng_url',
+	'kv_cache_dir'
+]);
 
 export const PUT: RequestHandler = async ({ request }) => {
 	const body = (await request.json()) as { key: string; value: string };
