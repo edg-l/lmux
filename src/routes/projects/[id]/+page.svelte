@@ -97,6 +97,16 @@
 	// Session list ref
 	let sessionListComponent: SessionList | undefined = $state();
 
+	// Multi-turn editing state
+	let editingMessageIdx: number | null = $state(null);
+	let editInput = $state('');
+
+	// Reasoning budget state
+	let thinkingBudgetEnabled = $state(false);
+	let thinkingBudgetValue = $state(4096);
+	let thinkingBudget = $derived(thinkingBudgetEnabled ? thinkingBudgetValue : -1);
+	let reasoningOpen = $state(false);
+
 	// File tree ref
 	let fileTreeRef: FileTree | undefined = $state();
 
@@ -107,8 +117,21 @@
 		loadFiles();
 		loadGitStatus();
 		cleanupServerInfo = loadServerInfo();
+
+		function handleGlobalKeydown(e: KeyboardEvent) {
+			if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+				e.preventDefault();
+				newConversation();
+			}
+			if (e.key === 'Escape' && streaming) {
+				abortController?.abort();
+			}
+		}
+		window.addEventListener('keydown', handleGlobalKeydown);
+
 		return () => {
 			cleanupServerInfo?.();
+			window.removeEventListener('keydown', handleGlobalKeydown);
 		};
 	});
 
@@ -449,6 +472,9 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					messages: chatMessages,
+					sampling: {
+						thinking_budget: thinkingBudget
+					},
 					tools_enabled: true,
 					model_id: serverInfo?.modelId ?? null,
 					project_id: projectId
@@ -646,6 +672,71 @@
 		}
 	}
 
+	function startEditing(idx: number, content: string) {
+		editingMessageIdx = idx;
+		editInput = content;
+	}
+
+	function cancelEditing() {
+		editingMessageIdx = null;
+		editInput = '';
+	}
+
+	async function saveEdit(idx: number) {
+		const msg = messages[idx];
+		if (!msg?.id || !activeConversationId) return;
+
+		const text = editInput.trim();
+		if (!text) return;
+
+		// Delete messages from this one onward on the server
+		await fetch(`/api/conversations/${activeConversationId}/messages`, {
+			method: 'DELETE',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ fromMessageId: msg.id })
+		});
+
+		// Truncate local messages
+		messages = messages.slice(0, idx);
+		editingMessageIdx = null;
+		editInput = '';
+
+		// Set as new input and auto-send
+		input = text;
+		await tick();
+		sendMessage();
+	}
+
+	function exportChat(format: 'markdown' | 'json') {
+		const chatMessages = messages.filter((m) => m.role === 'user' || m.role === 'assistant');
+		let content: string;
+		let filename: string;
+		let mime: string;
+
+		if (format === 'markdown') {
+			content = chatMessages
+				.map((m) => {
+					const role = m.role === 'user' ? 'User' : 'Assistant';
+					return `## ${role}\n\n${m.content}`;
+				})
+				.join('\n\n');
+			filename = `chat-${activeConversationId ?? 'new'}.md`;
+			mime = 'text/markdown';
+		} else {
+			content = JSON.stringify(chatMessages, null, 2);
+			filename = `chat-${activeConversationId ?? 'new'}.json`;
+			mime = 'application/json';
+		}
+
+		const blob = new Blob([content], { type: mime });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = filename;
+		a.click();
+		URL.revokeObjectURL(url);
+	}
+
 	function handleFileSelect(path: string) {
 		selectedFilePath = path;
 		activeTab = 'files';
@@ -682,6 +773,24 @@
 				<span class="font-mono text-xs text-[var(--color-text-muted)]">{project.path}</span>
 			</div>
 			<div class="flex items-center gap-2">
+				{#if messages.length > 0}
+					<div class="flex items-center gap-1">
+						<button
+							onclick={() => exportChat('markdown')}
+							title="Export as Markdown"
+							class="rounded px-2 py-1 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text-secondary)]"
+						>
+							.md
+						</button>
+						<button
+							onclick={() => exportChat('json')}
+							title="Export as JSON"
+							class="rounded px-2 py-1 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text-secondary)]"
+						>
+							.json
+						</button>
+					</div>
+				{/if}
 				{#if serverInfo?.status === 'ready' && serverInfo.modelName}
 					<div
 						class="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1"
@@ -832,13 +941,46 @@
 								{#each messages as msg, idx}
 									{#if msg.role === 'user'}
 										<div class="flex justify-end">
-											<div
-												class="max-w-[85%] rounded-2xl rounded-br-sm bg-[var(--color-accent-dim)] px-4 py-2.5"
-											>
-												<p class="user-content text-sm whitespace-pre-wrap text-white">
-													{@html linkifyText(msg.content)}
-												</p>
-											</div>
+											{#if editingMessageIdx === idx}
+												<div class="flex w-full max-w-[85%] flex-col gap-2">
+													<textarea
+														bind:value={editInput}
+														rows="3"
+														class="w-full resize-none rounded-lg border border-[var(--color-accent)] bg-[var(--color-elevated)] px-3 py-2 text-sm text-[var(--color-text-primary)] focus:outline-none"
+													></textarea>
+													<div class="flex justify-end gap-2">
+														<button
+															onclick={cancelEditing}
+															class="rounded px-3 py-1 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
+														>
+															Cancel
+														</button>
+														<button
+															onclick={() => saveEdit(idx)}
+															class="rounded bg-[var(--color-accent-dim)] px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent)]"
+														>
+															Save & Send
+														</button>
+													</div>
+												</div>
+											{:else}
+												<!-- svelte-ignore a11y_no_static_element_interactions -->
+												<div
+													class="max-w-[85%] cursor-pointer rounded-2xl rounded-br-sm bg-[var(--color-accent-dim)] px-4 py-2.5 transition-opacity hover:opacity-90"
+													role="button"
+													tabindex="0"
+													onclick={() => !streaming && msg.id && startEditing(idx, msg.content)}
+													onkeydown={(e) => {
+														if (e.key === 'Enter' && !streaming && msg.id)
+															startEditing(idx, msg.content);
+													}}
+													title={msg.id ? 'Click to edit' : ''}
+												>
+													<p class="user-content text-sm whitespace-pre-wrap text-white">
+														{@html linkifyText(msg.content)}
+													</p>
+												</div>
+											{/if}
 										</div>
 									{:else if msg.role === 'tool_status'}
 										{@const isExpanded = expandedTools.has(idx)}
@@ -1188,6 +1330,60 @@
 								</button>
 							{/if}
 						</div>
+						<!-- Reasoning Budget -->
+						<div class="mx-auto mt-2 max-w-3xl">
+							<button
+								onclick={() => (reasoningOpen = !reasoningOpen)}
+								class="flex items-center gap-1 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
+							>
+								<svg
+									class="h-3 w-3 transition-transform {reasoningOpen ? 'rotate-90' : ''}"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+									stroke-width="2"
+								>
+									<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+								</svg>
+								Reasoning
+								{#if thinkingBudgetEnabled}
+									<span class="font-mono text-[var(--color-accent)]">
+										{thinkingBudgetValue.toLocaleString()}
+									</span>
+								{/if}
+							</button>
+							{#if reasoningOpen}
+								<div
+									class="mt-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 py-2"
+								>
+									<div class="flex items-center gap-3">
+										<label class="flex items-center gap-2">
+											<input
+												type="checkbox"
+												bind:checked={thinkingBudgetEnabled}
+												class="accent-[var(--color-accent)]"
+											/>
+											<span class="text-xs text-[var(--color-text-muted)]">Thinking Budget</span>
+										</label>
+										{#if thinkingBudgetEnabled}
+											<span class="font-mono text-xs font-medium text-[var(--color-text-primary)]"
+												>{thinkingBudgetValue.toLocaleString()}</span
+											>
+											<input
+												type="range"
+												bind:value={thinkingBudgetValue}
+												min={1024}
+												max={32768}
+												step={256}
+												class="sampling-range flex-1"
+											/>
+										{:else}
+											<span class="text-xs text-[var(--color-text-muted)]">Disabled</span>
+										{/if}
+									</div>
+								</div>
+							{/if}
+						</div>
 						{#if tokenUsage}
 							{@const ctxSize = serverInfo?.contextSize ?? 0}
 							{@const usagePercent =
@@ -1448,5 +1644,35 @@
 		background: var(--color-surface);
 		color: var(--color-text-primary);
 		font-weight: 600;
+	}
+	.sampling-range {
+		-webkit-appearance: none;
+		appearance: none;
+		height: 4px;
+		border-radius: 2px;
+		background: var(--color-surface);
+		outline: none;
+	}
+	.sampling-range::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		appearance: none;
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+		background: var(--color-accent);
+		cursor: pointer;
+	}
+	.sampling-range::-moz-range-thumb {
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+		background: var(--color-accent);
+		cursor: pointer;
+		border: none;
+	}
+	.sampling-range::-moz-range-track {
+		height: 4px;
+		border-radius: 2px;
+		background: var(--color-surface);
 	}
 </style>

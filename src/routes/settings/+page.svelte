@@ -16,6 +16,62 @@
 	let searxngError = $state('');
 	let landlockAvailable: boolean | null = $state(null);
 
+	// Sandbox rules state
+	let writablePaths = $state<Array<{ id: number; path: string; created_at: string }>>([]);
+	let approvedCommands = $state<Array<{ id: number; pattern: string; created_at: string }>>([]);
+	let deletingPath = $state<number | null>(null);
+	let deletingCommand = $state<number | null>(null);
+
+	async function loadWritablePaths() {
+		try {
+			const res = await fetch('/api/sandbox/writable-paths');
+			if (res.ok) writablePaths = await res.json();
+		} catch {
+			/* ignore */
+		}
+	}
+
+	async function loadApprovedCommands() {
+		try {
+			const res = await fetch('/api/sandbox/approved-commands');
+			if (res.ok) approvedCommands = await res.json();
+		} catch {
+			/* ignore */
+		}
+	}
+
+	async function deleteWritablePath(id: number) {
+		deletingPath = id;
+		try {
+			const res = await fetch('/api/sandbox/writable-paths', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id })
+			});
+			if (res.ok) {
+				writablePaths = writablePaths.filter((p) => p.id !== id);
+			}
+		} finally {
+			deletingPath = null;
+		}
+	}
+
+	async function deleteApprovedCommand(id: number) {
+		deletingCommand = id;
+		try {
+			const res = await fetch('/api/sandbox/approved-commands', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id })
+			});
+			if (res.ok) {
+				approvedCommands = approvedCommands.filter((c) => c.id !== id);
+			}
+		} finally {
+			deletingCommand = null;
+		}
+	}
+
 	async function loadSettings() {
 		loading = true;
 		try {
@@ -120,6 +176,8 @@
 	onMount(() => {
 		loadSettings();
 		checkLandlock();
+		loadWritablePaths();
+		loadApprovedCommands();
 	});
 </script>
 
@@ -386,6 +444,73 @@
 						</p>
 					</div>
 				{/if}
+			</div>
+
+			<!-- Sandbox Rules -->
+			<div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+				<h2
+					class="mb-3 text-xs font-semibold tracking-wide text-[var(--color-text-muted)] uppercase"
+				>
+					Sandbox Rules
+				</h2>
+
+				<!-- Writable Paths -->
+				<div class="mb-4">
+					<h3 class="mb-2 text-xs font-medium text-[var(--color-text-secondary)]">
+						Writable Paths
+					</h3>
+					{#if writablePaths.length === 0}
+						<p class="text-xs text-[var(--color-text-muted)]">(none)</p>
+					{:else}
+						<div class="space-y-1">
+							{#each writablePaths as wp}
+								<div
+									class="flex items-center justify-between rounded border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 py-1.5"
+								>
+									<span class="min-w-0 truncate font-mono text-xs text-[var(--color-text-primary)]">
+										{wp.path}
+									</span>
+									<button
+										onclick={() => deleteWritablePath(wp.id)}
+										disabled={deletingPath === wp.id}
+										class="ml-2 shrink-0 rounded px-2 py-0.5 text-xs text-red-400 transition-colors hover:bg-red-500/10 disabled:opacity-50"
+									>
+										{deletingPath === wp.id ? '...' : 'Delete'}
+									</button>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</div>
+
+				<!-- Approved Commands -->
+				<div>
+					<h3 class="mb-2 text-xs font-medium text-[var(--color-text-secondary)]">
+						Approved Commands
+					</h3>
+					{#if approvedCommands.length === 0}
+						<p class="text-xs text-[var(--color-text-muted)]">(none)</p>
+					{:else}
+						<div class="space-y-1">
+							{#each approvedCommands as cmd}
+								<div
+									class="flex items-center justify-between rounded border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 py-1.5"
+								>
+									<span class="min-w-0 truncate font-mono text-xs text-[var(--color-text-primary)]">
+										{cmd.pattern}
+									</span>
+									<button
+										onclick={() => deleteApprovedCommand(cmd.id)}
+										disabled={deletingCommand === cmd.id}
+										class="ml-2 shrink-0 rounded px-2 py-0.5 text-xs text-red-400 transition-colors hover:bg-red-500/10 disabled:opacity-50"
+									>
+										{deletingCommand === cmd.id ? '...' : 'Delete'}
+									</button>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</div>
 			</div>
 
 			<HardwareInfo />
