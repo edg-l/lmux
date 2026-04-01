@@ -65,9 +65,12 @@
 					return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
 				},
 				code({ text, lang }) {
-					const trimmed = text.replace(/\n+$/, '');
-					const rawLines = trimmed.replace(/<[^>]+>/g, '').split('\n');
-					const nums = rawLines.map((_, i) => `<span>${i + 1}</span>`).join('\n');
+					// Strip tags to get raw text, then trim trailing whitespace/newlines
+					const raw = text.replace(/<[^>]+>/g, '').replace(/[\s\n]+$/, '');
+					const lineCount = raw.split('\n').length;
+					const nums = Array.from({ length: lineCount }, (_, i) => `<span>${i + 1}</span>`).join('\n');
+					// Also trim the highlighted HTML to match
+					const trimmed = text.replace(/\s+$/, '');
 					const langLabel = lang ? `<div class="code-lang">${lang}</div>` : '';
 					return `<div class="code-block">${langLabel}<div class="code-body"><div class="line-numbers" aria-hidden="true">${nums}</div><pre class="code-content"><code class="hljs${lang ? ` language-${lang}` : ''}">${trimmed}</code></pre></div></div>`;
 				}
