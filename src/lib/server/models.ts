@@ -1,5 +1,5 @@
 import { readdirSync, statSync, readlinkSync, realpathSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join, basename, dirname } from 'node:path';
 import { queryAll, queryOne, execute } from './db';
 import { getModelInfo } from './gguf';
 import { getModelsDir, getHfCacheDir } from './settings';
@@ -19,6 +19,7 @@ export interface ModelRow {
 	block_count: number | null;
 	hf_repo: string | null;
 	hf_filename: string | null;
+	mmproj_files: string;
 	created_at: string;
 	system_prompt: string | null;
 }
@@ -58,11 +59,13 @@ export interface ProfileInput {
 export async function scanModels(): Promise<number> {
 	const modelsDir = getModelsDir();
 	const ggufFiles = findGgufFiles(modelsDir);
+	const mmprojFiles = findMmprojFiles(modelsDir);
 
 	// Also scan HuggingFace cache
 	const hfCacheDir = getHfCacheDir();
 	if (hfCacheDir) {
 		ggufFiles.push(...findHfCacheGgufs(hfCacheDir));
+		mmprojFiles.push(...findHfCacheMmproj(hfCacheDir));
 	}
 
 	let added = 0;
@@ -113,6 +116,9 @@ export async function scanModels(): Promise<number> {
 		}
 	}
 
+	// Associate mmproj files with models
+	associateMmprojFiles(mmprojFiles);
+
 	return added;
 }
 
@@ -132,6 +138,109 @@ function findGgufFiles(dir: string): string[] {
 		// Directory not readable
 	}
 	return results;
+}
+
+function findMmprojFiles(dir: string): string[] {
+	const results: string[] = [];
+	try {
+		const entries = readdirSync(dir, { withFileTypes: true });
+		for (const entry of entries) {
+			const fullPath = join(dir, entry.name);
+			if (entry.isDirectory()) {
+				results.push(...findMmprojFiles(fullPath));
+			} else if (entry.name.endsWith('.gguf') && entry.name.includes('mmproj')) {
+				results.push(fullPath);
+			}
+		}
+	} catch {
+		// Directory not readable
+	}
+	return results;
+}
+
+function findHfCacheMmproj(hubDir: string): string[] {
+	const results: string[] = [];
+	try {
+		const modelDirs = readdirSync(hubDir, { withFileTypes: true });
+		for (const modelDir of modelDirs) {
+			if (!modelDir.isDirectory() || !modelDir.name.startsWith('models--')) continue;
+			const snapshotsDir = join(hubDir, modelDir.name, 'snapshots');
+			try {
+				const snapshots = readdirSync(snapshotsDir, { withFileTypes: true });
+				for (const snapshot of snapshots) {
+					if (!snapshot.isDirectory()) continue;
+					const snapshotPath = join(snapshotsDir, snapshot.name);
+					try {
+						const files = readdirSync(snapshotPath, { withFileTypes: true });
+						for (const file of files) {
+							if (file.name.endsWith('.gguf') && file.name.includes('mmproj')) {
+								const fullPath = join(snapshotPath, file.name);
+								try {
+									const target = readlinkSync(fullPath);
+									if (target.endsWith('.incomplete')) continue;
+									realpathSync(fullPath);
+									results.push(fullPath);
+								} catch {
+									try {
+										statSync(fullPath);
+										results.push(fullPath);
+									} catch {
+										// Skip
+									}
+								}
+							}
+						}
+					} catch {
+						// Snapshot dir not readable
+					}
+				}
+			} catch {
+				// No snapshots dir
+			}
+		}
+	} catch {
+		// Hub dir not readable
+	}
+	return results;
+}
+
+/**
+ * Match mmproj files to models by directory proximity or HF repo.
+ */
+function associateMmprojFiles(mmprojPaths: string[]): void {
+	const models = queryAll<{ id: number; filepath: string; hf_repo: string | null }>(
+		'SELECT id, filepath, hf_repo FROM models'
+	);
+
+	for (const model of models) {
+		const matched: string[] = [];
+		const modelDir = dirname(model.filepath);
+		const modelHfRepo = model.hf_repo;
+
+		for (const mmprojPath of mmprojPaths) {
+			const mmprojDir = dirname(mmprojPath);
+
+			// Match by same directory
+			if (mmprojDir === modelDir) {
+				matched.push(mmprojPath);
+				continue;
+			}
+
+			// Match by same HF repo (both in cache)
+			if (modelHfRepo) {
+				const mmprojHf = parseHfCachePath(mmprojPath);
+				if (mmprojHf && mmprojHf.repo === modelHfRepo) {
+					matched.push(mmprojPath);
+				}
+			}
+		}
+
+		const currentJson = JSON.stringify(matched);
+		execute('UPDATE models SET mmproj_files = $mmproj WHERE id = $id', {
+			$mmproj: currentJson,
+			$id: model.id
+		});
+	}
 }
 
 /**

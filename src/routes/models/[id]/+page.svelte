@@ -33,6 +33,15 @@
 	let formKvCacheType = $state('q8_0');
 	let formExtraFlags = $state('');
 	let formMmprojPath = $state('');
+	let mmprojFiles: string[] = $derived(
+		(() => {
+			try {
+				return JSON.parse(data.model.mmproj_files ?? '[]');
+			} catch {
+				return [];
+			}
+		})()
+	);
 	let generating = $state(false);
 	let launchingId: number | null = $state(null);
 	let launchError: string | null = $state(null);
@@ -518,15 +527,28 @@
 						<label
 							for="profile-mmproj"
 							class="mb-1.5 block text-xs font-medium text-[var(--color-text-muted)] uppercase"
-							>mmproj Path</label
+							>Vision Projector (mmproj)</label
 						>
-						<input
-							id="profile-mmproj"
-							type="text"
-							bind:value={formMmprojPath}
-							placeholder="/path/to/mmproj-model.gguf"
-							class="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
-						/>
+						{#if mmprojFiles.length > 0}
+							<select
+								id="profile-mmproj"
+								bind:value={formMmprojPath}
+								class="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-sm text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none"
+							>
+								<option value="">None</option>
+								{#each mmprojFiles as mmpath}
+									<option value={mmpath}>{mmpath.split('/').pop()}</option>
+								{/each}
+							</select>
+						{:else}
+							<input
+								id="profile-mmproj"
+								type="text"
+								bind:value={formMmprojPath}
+								placeholder="No mmproj files found (enter path manually)"
+								class="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
+							/>
+						{/if}
 					</div>
 				</div>
 				<div class="mt-4 flex gap-2">
