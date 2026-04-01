@@ -12,7 +12,8 @@ const DEFAULTS: Record<string, string> = {
 	hf_token: '',
 	vram_headroom_mb: '512',
 	tools_enabled: 'true',
-	searxng_url: ''
+	searxng_url: '',
+	kv_cache_dir: ''
 };
 
 export function getSetting(key: string): string {

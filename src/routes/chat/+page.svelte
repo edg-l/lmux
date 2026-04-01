@@ -24,8 +24,14 @@
 		id: number;
 		title: string | null;
 		model_id: number | null;
+		model_name: string | null;
 		created_at: string;
 		updated_at: string;
+	}
+
+	interface AvailableModel {
+		id: number;
+		filename: string;
 	}
 
 	interface ServerInfo {
@@ -86,6 +92,12 @@
 	// Thinking block expansion tracking (collapsed by default, set tracks *expanded* ones)
 	let expandedThinking = $state<Set<number>>(new Set());
 
+	// Model selection state
+	let availableModels = $state<AvailableModel[]>([]);
+	let selectedModelId: number | null = $state(null);
+	let isLaunching = $state(false);
+	let modelError = $state('');
+
 	// Tool calling state
 	let toolsEnabled = $state(true);
 	let expandedTools = $state<Set<number>>(new Set());
@@ -93,9 +105,25 @@
 	onMount(() => {
 		loadConversations();
 		loadToolsEnabled();
+		loadAvailableModels();
 		const cleanupServerInfo = loadServerInfo();
 		return () => cleanupServerInfo();
 	});
+
+	async function loadAvailableModels() {
+		try {
+			const res = await fetch('/api/models');
+			if (res.ok) {
+				const models = await res.json();
+				availableModels = models.map((m: { id: number; filename: string }) => ({
+					id: m.id,
+					filename: m.filename
+				}));
+			}
+		} catch {
+			// ignore
+		}
+	}
 
 	async function loadToolsEnabled() {
 		try {
@@ -239,6 +267,8 @@
 		activeConversationId = null;
 		messages = [];
 		input = '';
+		modelError = '';
+		selectedModelId = serverInfo?.modelId ?? null;
 	}
 
 	async function selectConversation(id: number) {
@@ -266,11 +296,19 @@
 
 	async function ensureConversation(): Promise<number> {
 		if (activeConversationId) return activeConversationId;
+
+		const modelId = selectedModelId ?? serverInfo?.modelId ?? null;
+		if (!modelId) {
+			modelError = 'Select a model first';
+			throw new Error('No model selected');
+		}
+		modelError = '';
+
 		const title = input.trim().slice(0, 50) || 'New conversation';
 		const res = await fetch('/api/conversations', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ title })
+			body: JSON.stringify({ title, modelId })
 		});
 		const data = await res.json();
 		activeConversationId = data.id;
@@ -309,7 +347,38 @@
 	async function sendMessage() {
 		const text = input.trim();
 		if (!text || streaming) return;
-		const conversationId = await ensureConversation();
+
+		const previousActiveId = activeConversationId;
+		let conversationId: number;
+		try {
+			conversationId = await ensureConversation();
+		} catch {
+			return;
+		}
+
+		// Get the conversation's model_id (may have just been created)
+		const wasNew = conversationId !== previousActiveId;
+		const conv = conversations.find((c) => c.id === conversationId);
+		const convModelId = conv?.model_id ?? null;
+
+		// Auto-assign model to legacy conversations without one (Task 6.3)
+		// Skip for newly-created conversations (they already have a model_id from ensureConversation)
+		if (!wasNew && convModelId === null && serverInfo?.modelId) {
+			try {
+				await fetch(`/api/conversations/${conversationId}`, {
+					method: 'PATCH',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ model_id: serverInfo.modelId })
+				});
+				await loadConversations();
+			} catch {
+				// non-fatal
+			}
+		} else if (convModelId !== null && serverInfo?.modelId !== convModelId) {
+			// Task 6.1: Wrong model running
+			modelError = 'Wrong model is running. Launch the correct model first.';
+			return;
+		}
 		messages = [...messages, { role: 'user', content: text }];
 		input = '';
 		await saveMessage(conversationId, 'user', text);
@@ -622,6 +691,91 @@
 		});
 	}
 
+	let activeConversation = $derived(
+		conversations.find((c) => c.id === activeConversationId) ?? null
+	);
+
+	let modelMismatch = $derived.by(() => {
+		if (!activeConversation || activeConversation.model_id === null) return false;
+		return serverInfo?.modelId !== activeConversation.model_id;
+	});
+
+	let modelDeleted = $derived.by(() => {
+		if (!activeConversation) return false;
+		return activeConversation.model_id === null && activeConversationId !== null;
+	});
+
+	// Task 4.5: Auto-clear isLaunching when the right model is ready
+	$effect(() => {
+		if (
+			isLaunching &&
+			serverInfo?.status === 'ready' &&
+			activeConversation?.model_id &&
+			serverInfo.modelId === activeConversation.model_id
+		) {
+			isLaunching = false;
+		}
+	});
+
+	async function launchModel(modelId: number) {
+		isLaunching = true;
+		modelError = '';
+		try {
+			// Fetch profiles for the model
+			const profilesRes = await fetch(`/api/models/${modelId}/profiles`);
+			if (!profilesRes.ok) {
+				modelError = 'Failed to load model profiles';
+				isLaunching = false;
+				return;
+			}
+			const profiles = await profilesRes.json();
+			if (!profiles || profiles.length === 0) {
+				modelError = 'No profiles found for this model. Create one on the models page.';
+				isLaunching = false;
+				return;
+			}
+
+			// If a different model is running, stop it first
+			if (serverInfo?.status === 'ready' || serverInfo?.status === 'starting') {
+				const currentModelName = serverInfo.modelName ?? 'current model';
+				const targetModel = availableModels.find((m) => m.id === modelId);
+				const targetName = targetModel?.filename ?? 'selected model';
+				if (!confirm(`Stop ${currentModelName} and launch ${targetName}?`)) {
+					isLaunching = false;
+					return;
+				}
+				await fetch('/api/server/stop', { method: 'POST' });
+				// Wait for stop to complete (10s timeout)
+				await new Promise<void>((resolve, reject) => {
+					const deadline = Date.now() + 10_000;
+					const check = setInterval(() => {
+						if (!serverInfo || serverInfo.status === 'stopped' || serverInfo.status === 'error') {
+							clearInterval(check);
+							resolve();
+						} else if (Date.now() > deadline) {
+							clearInterval(check);
+							reject(new Error('Timed out waiting for server to stop'));
+						}
+					}, 200);
+				});
+			}
+
+			const startRes = await fetch('/api/server/start', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ modelId, profileId: profiles[0].id })
+			});
+			if (!startRes.ok) {
+				const err = await startRes.json();
+				modelError = err.error ?? 'Failed to start server';
+				isLaunching = false;
+			}
+		} catch {
+			modelError = 'Failed to launch model';
+			isLaunching = false;
+		}
+	}
+
 	function toggleThinking(key: number) {
 		const next = new Set(expandedThinking);
 		if (next.has(key)) {
@@ -671,6 +825,13 @@
 						>
 							{conv.title || 'Untitled'}
 						</p>
+						{#if conv.model_name}
+							<p class="truncate font-mono text-xs text-[var(--color-text-muted)]">
+								{conv.model_name}
+							</p>
+						{:else if conv.model_id !== null && !conv.model_name}
+							<p class="text-xs text-red-400/60">Model removed</p>
+						{/if}
 						<p class="font-mono text-xs text-[var(--color-text-muted)]">
 							{formatTime(conv.updated_at)}
 						</p>
@@ -720,15 +881,34 @@
 			</button>
 
 			<span class="flex-1 text-xs font-medium text-[var(--color-text-secondary)]">
-				{#if activeConversationId}
-					{conversations.find((c) => c.id === activeConversationId)?.title || 'Chat'}
+				{#if activeConversation}
+					{activeConversation.title || 'Chat'}
 				{:else}
 					New Chat
 				{/if}
 			</span>
 
 			<!-- Model indicator -->
-			{#if serverInfo?.status === 'ready' && serverInfo.modelName}
+			{#if activeConversation?.model_name}
+				<div
+					class="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1"
+				>
+					{#if serverInfo?.status === 'ready' && serverInfo.modelId === activeConversation.model_id}
+						<span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+					{:else}
+						<span class="h-1.5 w-1.5 rounded-full bg-[var(--color-text-muted)]"></span>
+					{/if}
+					<span
+						class="max-w-48 truncate font-mono text-xs text-[var(--color-text-secondary)]"
+						title={activeConversation.model_name}>{activeConversation.model_name}</span
+					>
+					{#if serverInfo?.status === 'ready' && serverInfo.modelId === activeConversation.model_id && serverInfo.lastTokensPerSecond != null}
+						<span class="font-mono text-xs text-[var(--color-accent)]"
+							>{serverInfo.lastTokensPerSecond.toFixed(1)} t/s</span
+						>
+					{/if}
+				</div>
+			{:else if serverInfo?.status === 'ready' && serverInfo.modelName}
 				<div
 					class="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1"
 				>
@@ -1090,32 +1270,92 @@
 
 		<!-- Input area -->
 		<div class="border-t border-[var(--color-border)] px-4 py-3">
-			<div class="mx-auto flex max-w-3xl gap-2">
-				<textarea
-					bind:this={textareaEl}
-					bind:value={input}
-					onkeydown={handleKeydown}
-					placeholder={serverInfo?.status === 'ready' ? 'Message...' : 'Load a model first...'}
-					rows="1"
-					disabled={streaming || serverInfo?.status !== 'ready'}
-					class="max-h-[160px] min-h-[40px] flex-1 resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] transition-colors focus:border-[var(--color-accent)] focus:outline-none disabled:opacity-50"
-				></textarea>
-
-				{#if streaming}
-					<button
-						onclick={stopGeneration}
-						class="shrink-0 self-end rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
-						>Stop</button
+			{#if modelDeleted}
+				<div class="mx-auto flex max-w-3xl flex-col items-center gap-2 py-4">
+					<p class="text-sm text-red-400">This conversation's model has been removed.</p>
+					<a
+						href="/models"
+						class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs text-[var(--color-accent)] transition-colors hover:border-[var(--color-accent)]/30"
 					>
-				{:else}
+						Go to Models
+					</a>
+				</div>
+			{:else if modelMismatch && activeConversation?.model_id}
+				<div class="mx-auto flex max-w-3xl flex-col items-center gap-2 py-4">
+					<p class="text-sm text-[var(--color-text-muted)]">
+						This conversation uses
+						<span class="font-mono text-[var(--color-text-secondary)]"
+							>{activeConversation.model_name}</span
+						>
+					</p>
 					<button
-						onclick={sendMessage}
-						disabled={!input.trim() || serverInfo?.status !== 'ready'}
-						class="shrink-0 self-end rounded-lg bg-[var(--color-accent-dim)] px-4 py-2.5 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent)] disabled:opacity-30"
-						>Send</button
+						onclick={() => launchModel(activeConversation!.model_id!)}
+						disabled={isLaunching}
+						class="rounded-lg bg-[var(--color-accent-dim)] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent)] disabled:opacity-50"
 					>
+						{#if isLaunching}
+							Launching...
+						{:else}
+							Launch {activeConversation.model_name}
+						{/if}
+					</button>
+					{#if modelError}
+						<p class="text-xs text-red-400">{modelError}</p>
+					{/if}
+				</div>
+			{:else}
+				{#if !activeConversationId}
+					<div class="mx-auto mb-2 max-w-3xl">
+						{#if availableModels.length > 0}
+							<select
+								bind:value={selectedModelId}
+								class="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)] focus:border-[var(--color-accent)] focus:outline-none"
+							>
+								<option value={null}>Select a model...</option>
+								{#each availableModels as model}
+									<option value={model.id}>{model.filename}</option>
+								{/each}
+							</select>
+						{:else}
+							<p class="text-xs text-[var(--color-text-muted)]">
+								No models found.
+								<a href="/models/search" class="text-[var(--color-accent)] hover:underline"
+									>Add a model</a
+								>
+							</p>
+						{/if}
+						{#if modelError}
+							<p class="mt-1 text-xs text-red-400">{modelError}</p>
+						{/if}
+					</div>
 				{/if}
-			</div>
+				<div class="mx-auto flex max-w-3xl gap-2">
+					<textarea
+						bind:this={textareaEl}
+						bind:value={input}
+						onkeydown={handleKeydown}
+						placeholder={serverInfo?.status === 'ready' ? 'Message...' : 'Load a model first...'}
+						rows="1"
+						disabled={streaming || serverInfo?.status !== 'ready'}
+						class="max-h-[160px] min-h-[40px] flex-1 resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] transition-colors focus:border-[var(--color-accent)] focus:outline-none disabled:opacity-50"
+					></textarea>
+
+					{#if streaming}
+						<button
+							onclick={stopGeneration}
+							class="shrink-0 self-end rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
+							>Stop</button
+						>
+					{:else}
+						<button
+							onclick={sendMessage}
+							disabled={!input.trim() || serverInfo?.status !== 'ready'}
+							class="shrink-0 self-end rounded-lg bg-[var(--color-accent-dim)] px-4 py-2.5 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent)] disabled:opacity-30"
+							>Send</button
+						>
+					{/if}
+				</div>
+			{/if}
 			{#if tokenUsage}
 				{@const ctxSize = serverInfo?.contextSize ?? 0}
 				{@const usagePercent = ctxSize > 0 ? Math.round((tokenUsage.total / ctxSize) * 100) : 0}

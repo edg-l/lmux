@@ -1,4 +1,5 @@
 import type { Subprocess } from 'bun';
+import { mkdirSync } from 'node:fs';
 import { Mutex } from './mutex';
 
 export interface ServerState {
@@ -26,6 +27,7 @@ export interface StartConfig {
 	flashAttn?: string | null;
 	kvCacheType?: string | null;
 	extraFlags?: string;
+	slotSavePath?: string;
 	llamaServerPath: string;
 }
 
@@ -124,6 +126,11 @@ export async function startServer(config: StartConfig): Promise<void> {
 		if (config.extraFlags) {
 			const extra = config.extraFlags.trim().split(/\s+/);
 			args.push(...extra);
+		}
+
+		if (config.slotSavePath && config.slotSavePath.trim()) {
+			mkdirSync(config.slotSavePath, { recursive: true });
+			args.push('--slot-save-path', config.slotSavePath);
 		}
 
 		serverState = {

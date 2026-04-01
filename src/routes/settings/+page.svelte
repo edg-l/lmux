@@ -6,6 +6,7 @@
 	let hfToken = $state('');
 	let hfTokenSource: string | null = $state(null);
 	let searxngUrl = $state('');
+	let kvCacheDir = $state('');
 	let loading = $state(true);
 	let saving = $state<Record<string, boolean>>({});
 	let saved = $state<Record<string, boolean>>({});
@@ -24,6 +25,7 @@
 				hfToken = settings.hf_token ?? '';
 				hfTokenSource = settings.hf_token_source ?? null;
 				searxngUrl = settings.searxng_url ?? '';
+				kvCacheDir = settings.kv_cache_dir ?? '';
 			}
 		} finally {
 			loading = false;
@@ -168,6 +170,34 @@
 						)}"
 					>
 						{saveButtonLabel('llama_server_path')}
+					</button>
+				</div>
+			</div>
+
+			<!-- KV Cache Directory -->
+			<div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] p-5">
+				<h2 class="text-xs font-semibold tracking-wide text-[var(--color-text-muted)] uppercase">
+					KV Cache Directory
+				</h2>
+				<p class="mt-1 mb-3 text-xs text-[var(--color-text-muted)]">
+					Directory to save/restore KV cache state per slot. Enables conversation context
+					persistence across server restarts. Leave empty to disable.
+				</p>
+				<div class="flex gap-2">
+					<input
+						type="text"
+						bind:value={kvCacheDir}
+						placeholder="/path/to/kv-cache"
+						class="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
+					/>
+					<button
+						onclick={() => saveSetting('kv_cache_dir', kvCacheDir)}
+						disabled={saving['kv_cache_dir']}
+						class="rounded-md border bg-transparent px-3 py-2 text-xs font-medium transition-colors disabled:opacity-50 {saveButtonClass(
+							'kv_cache_dir'
+						)}"
+					>
+						{saveButtonLabel('kv_cache_dir')}
 					</button>
 				</div>
 			</div>

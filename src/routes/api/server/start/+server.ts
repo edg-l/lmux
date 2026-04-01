@@ -54,6 +54,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		);
 	}
 
+	const kvCacheDir = getSetting('kv_cache_dir');
+
 	try {
 		await startServer({
 			modelPath: model.filepath,
@@ -67,6 +69,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			flashAttn,
 			kvCacheType,
 			extraFlags: extraFlags || undefined,
+			slotSavePath: kvCacheDir || undefined,
 			llamaServerPath
 		});
 

@@ -4,6 +4,7 @@ export interface Conversation {
 	id: number;
 	title: string | null;
 	model_id: number | null;
+	model_name: string | null;
 	created_at: string;
 	updated_at: string;
 }
@@ -44,11 +45,16 @@ export function createConversation(title?: string, modelId?: number): number {
 }
 
 export function listConversations(): Conversation[] {
-	return queryAll<Conversation>('SELECT * FROM conversations ORDER BY updated_at DESC');
+	return queryAll<Conversation>(
+		'SELECT c.*, m.filename as model_name FROM conversations c LEFT JOIN models m ON c.model_id = m.id ORDER BY c.updated_at DESC'
+	);
 }
 
 export function getConversation(id: number): Conversation | null {
-	return queryOne<Conversation>('SELECT * FROM conversations WHERE id = $id', { $id: id });
+	return queryOne<Conversation>(
+		'SELECT c.*, m.filename as model_name FROM conversations c LEFT JOIN models m ON c.model_id = m.id WHERE c.id = $id',
+		{ $id: id }
+	);
 }
 
 export function deleteConversation(id: number): void {
@@ -100,6 +106,13 @@ export function getMessages(conversationId: number): Message[] {
 		}
 		return { ...row, tool_calls: toolCalls };
 	});
+}
+
+export function updateConversationModel(id: number, modelId: number): void {
+	execute(
+		'UPDATE conversations SET model_id = $model_id, updated_at = CURRENT_TIMESTAMP WHERE id = $id',
+		{ $id: id, $model_id: modelId }
+	);
 }
 
 export function updateConversationTitle(id: number, title: string): void {
