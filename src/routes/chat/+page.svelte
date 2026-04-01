@@ -1854,7 +1854,7 @@
 		<!-- Messages -->
 		<div
 			bind:this={messagesContainer}
-			class="flex flex-1 flex-col justify-end overflow-y-auto px-4 py-6"
+			class="flex-1 overflow-y-auto px-4 py-6"
 		>
 			{#if messages.length === 0}
 				<div class="flex h-full flex-col items-center justify-center">
