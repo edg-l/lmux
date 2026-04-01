@@ -13,7 +13,11 @@ export async function runProjectCommand(
 	const offset = args.offset ?? 0;
 
 	const extraWritablePaths = getWritablePaths();
-	const { args: cmdArgs } = buildSandboxedCommand(projectRoot, args.command, extraWritablePaths);
+	const { args: cmdArgs, sandboxed } = buildSandboxedCommand(
+		projectRoot,
+		args.command,
+		extraWritablePaths
+	);
 
 	const proc = Bun.spawn(cmdArgs, {
 		cwd: projectRoot,
@@ -56,7 +60,8 @@ export async function runProjectCommand(
 			sliced + `\n[truncated, ${totalBytes} bytes total. Use offset/max_length to read more]`;
 	}
 
-	const blockedPaths = exitCode !== 0 ? parsePermissionDeniedPaths(output) : [];
+	// Only parse permission denied paths when running inside a sandbox
+	const blockedPaths = sandboxed && exitCode !== 0 ? parsePermissionDeniedPaths(output) : [];
 
 	return { output: finalOutput, blockedPaths };
 }

@@ -32,10 +32,6 @@ export function resolveApproval(requestId: string, approved: boolean): boolean {
 	return true;
 }
 
-export function getApprovalCommandBeforeResolve(requestId: string): string | undefined {
-	return pending.get(requestId)?.command;
-}
-
 export function cleanupApproval(requestId: string): void {
 	const entry = pending.get(requestId);
 	if (entry) {

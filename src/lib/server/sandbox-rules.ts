@@ -28,5 +28,5 @@ export function removeApprovedCommand(id: number): void {
 
 export function isCommandApproved(command: string): boolean {
 	const patterns = getApprovedCommands();
-	return patterns.some((pattern) => command.startsWith(pattern));
+	return patterns.some((pattern) => command === pattern);
 }

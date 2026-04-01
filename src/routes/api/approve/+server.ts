@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { resolveApproval, getApprovalCommandBeforeResolve } from '$lib/server/approval-store';
+import { resolveApproval, getApprovalCommand } from '$lib/server/approval-store';
 import { addApprovedCommand } from '$lib/server/sandbox-rules';
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -9,16 +9,17 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ error: 'Missing requestId or approved' }, { status: 400 });
 	}
 
-	if (remember && approved) {
-		const command = getApprovalCommandBeforeResolve(requestId);
-		if (command) {
-			addApprovedCommand(command);
-		}
-	}
+	// Read command before resolving (resolving deletes the entry)
+	const command = remember && approved ? getApprovalCommand(requestId) : undefined;
 
 	const found = resolveApproval(requestId, approved);
 	if (!found) {
 		return json({ error: 'No pending approval found' }, { status: 404 });
 	}
+
+	if (command) {
+		addApprovedCommand(command);
+	}
+
 	return json({ ok: true });
 };
