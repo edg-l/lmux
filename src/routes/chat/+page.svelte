@@ -245,6 +245,32 @@
 		}
 	}
 
+	let fetchingRecommended = $state(false);
+
+	async function fetchRecommendedSampling() {
+		if (!samplingModelId) return;
+		fetchingRecommended = true;
+		try {
+			const res = await fetch(`/api/models/${samplingModelId}/sampling`, { method: 'POST' });
+			if (!res.ok) {
+				const data = await res.json();
+				modelError = data.error ?? 'Failed to fetch recommended params';
+				return;
+			}
+			const params = await res.json();
+			temperature = params.temperature;
+			top_p = params.top_p;
+			top_k = params.top_k;
+			min_p = params.min_p;
+			repeat_penalty = params.repeat_penalty;
+			samplingSource = params.source;
+		} catch {
+			modelError = 'Failed to fetch recommended params';
+		} finally {
+			fetchingRecommended = false;
+		}
+	}
+
 	function resetSampling() {
 		temperature = SAMPLING_DEFAULTS.temperature;
 		top_p = SAMPLING_DEFAULTS.top_p;
@@ -998,6 +1024,12 @@
 							<span
 								class="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-0.5 font-mono text-xs text-[var(--color-text-muted)]"
 								>{samplingSource}</span
+							>
+							<button
+								onclick={fetchRecommendedSampling}
+								disabled={fetchingRecommended || !samplingModelId}
+								class="rounded border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)] disabled:opacity-50"
+								>{fetchingRecommended ? 'Fetching...' : 'Fetch recommended'}</button
 							>
 							<button
 								onclick={resetSampling}
