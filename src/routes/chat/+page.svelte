@@ -2050,6 +2050,14 @@
 							</div>
 						{:else if msg.role === 'tool'}
 							{@const isExpanded = expandedTools.has(idx)}
+							{@const toolSummary = (() => {
+								try {
+									const args = JSON.parse(msg.toolArgs ?? '{}');
+									if (msg.toolName === 'fetch_url' && args.url) return args.url;
+									if (msg.toolName === 'web_search' && args.query) return `"${args.query}"`;
+									return '';
+								} catch { return ''; }
+							})()}
 							<div
 								class="max-w-[90%] rounded-lg border border-[var(--color-border)] border-l-2 border-l-cyan-500/40 bg-[var(--color-elevated)]"
 							>
@@ -2084,8 +2092,11 @@
 									<span class="text-xs font-medium text-cyan-400/80"
 										>{msg.toolName ?? 'Tool result'}</span
 									>
+									{#if toolSummary}
+										<span class="min-w-0 truncate text-xs text-[var(--color-text-muted)]">{toolSummary}</span>
+									{/if}
 									<svg
-										class="h-3 w-3 text-emerald-400"
+										class="h-3 w-3 shrink-0 text-emerald-400"
 										fill="none"
 										stroke="currentColor"
 										viewBox="0 0 24 24"
