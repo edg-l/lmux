@@ -1914,6 +1914,16 @@
 							</div>
 						{:else if msg.role === 'tool_status'}
 							{@const isExpanded = expandedTools.has(idx)}
+							{@const toolSummary = (() => {
+								try {
+									const args = JSON.parse(msg.toolArgs ?? '{}');
+									if (msg.toolName === 'fetch_url' && args.url) return args.url;
+									if (msg.toolName === 'web_search' && args.query) return `"${args.query}"`;
+									return '';
+								} catch {
+									return '';
+								}
+							})()}
 							<div class="max-w-[90%] rounded-lg border-l-2 border-cyan-500/40 bg-cyan-500/5">
 								<button
 									onclick={() => toggleTool(idx)}
@@ -1944,11 +1954,16 @@
 										/>
 									</svg>
 									<span class="text-xs font-medium text-cyan-400">{msg.toolName ?? 'tool'}</span>
+									{#if toolSummary}
+										<span class="min-w-0 truncate text-xs text-[var(--color-text-muted)]"
+											>{toolSummary}</span
+										>
+									{/if}
 									{#if msg.toolStatus === 'running'}
-										<span class="h-2 w-2 animate-pulse rounded-full bg-cyan-400"></span>
+										<span class="h-2 w-2 shrink-0 animate-pulse rounded-full bg-cyan-400"></span>
 									{:else}
 										<svg
-											class="h-3 w-3 text-emerald-400"
+											class="h-3 w-3 shrink-0 text-emerald-400"
 											fill="none"
 											stroke="currentColor"
 											viewBox="0 0 24 24"
