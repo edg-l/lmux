@@ -27,6 +27,7 @@ export interface HfFileInfo {
 	filename: string;
 	size: number;
 	quantType: string | null;
+	isMmproj: boolean;
 }
 
 /**
@@ -222,7 +223,7 @@ export async function listRepoFiles(repoId: string): Promise<HfFileInfo[]> {
 	return entries
 		.filter((entry) => {
 			const name = entry.rfilename ?? entry.path ?? '';
-			return name.endsWith('.gguf') && !name.includes('mmproj') && entry.type !== 'directory';
+			return name.endsWith('.gguf') && entry.type !== 'directory';
 		})
 		.map((entry) => {
 			const filename = entry.rfilename ?? entry.path ?? '';
@@ -230,7 +231,8 @@ export async function listRepoFiles(repoId: string): Promise<HfFileInfo[]> {
 			return {
 				filename,
 				size: entry.size ?? 0,
-				quantType: quant !== 'Unknown' ? quant : null
+				quantType: quant !== 'Unknown' ? quant : null,
+				isMmproj: filename.includes('mmproj')
 			};
 		});
 }

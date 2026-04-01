@@ -17,7 +17,8 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	const filesWithFit = files.map((file) => ({
 		...file,
-		fit: (totalVram > 0 ? assessFit(file.size, totalVram) : 'no_fit') as FitLevel
+		fit: (totalVram > 0 ? assessFit(file.size, totalVram) : 'no_fit') as FitLevel,
+		isMmproj: file.isMmproj ?? false
 	}));
 
 	return {

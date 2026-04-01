@@ -5,6 +5,8 @@
 
 	let downloading = $state<Record<string, boolean>>({});
 	let downloadErrors = $state<Record<string, string>>({});
+	let modelFiles = $derived(data.files.filter((f: { isMmproj?: boolean }) => !f.isMmproj));
+	let mmprojFiles = $derived(data.files.filter((f: { isMmproj?: boolean }) => f.isMmproj));
 
 	function fitColor(fit: string): string {
 		switch (fit) {
@@ -66,7 +68,10 @@
 		{data.repoId}
 	</h1>
 	<p class="mb-6 font-mono text-xs text-[var(--color-text-muted)]">
-		{data.files.length} GGUF file{data.files.length !== 1 ? 's' : ''}
+		{data.files.filter((f) => !f.isMmproj).length} model{data.files.filter((f) => !f.isMmproj)
+			.length !== 1
+			? 's'
+			: ''}{#if data.files.some((f) => f.isMmproj)}, {data.files.filter((f) => f.isMmproj).length} mmproj{/if}
 	</p>
 
 	{#if data.generationConfig}
@@ -123,7 +128,7 @@
 		<p class="text-sm text-[var(--color-text-muted)]">No GGUF files found in this repository.</p>
 	{:else}
 		<div class="overflow-hidden rounded-lg border border-[var(--color-border)]">
-			{#each data.files as file, i}
+			{#each modelFiles as file, i}
 				<div
 					class="flex items-center justify-between bg-[var(--color-elevated)] px-5 py-3.5 {i > 0
 						? 'border-t border-[var(--color-border)]'
@@ -165,5 +170,55 @@
 				</div>
 			{/each}
 		</div>
+
+		{#if mmprojFiles.length > 0}
+			<h2
+				class="mt-6 mb-3 text-xs font-semibold tracking-wide text-[var(--color-text-muted)] uppercase"
+			>
+				Vision Projectors (mmproj)
+			</h2>
+			<div class="overflow-hidden rounded-lg border border-[var(--color-border)]">
+				{#each mmprojFiles as file, i}
+					<div
+						class="flex items-center justify-between bg-[var(--color-elevated)] px-5 py-3.5 {i > 0
+							? 'border-t border-[var(--color-border)]'
+							: ''}"
+					>
+						<div class="min-w-0 flex-1">
+							<div class="flex items-center gap-2.5">
+								<span
+									class="rounded border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-xs font-medium text-purple-400"
+									>mmproj</span
+								>
+								<span class="truncate font-mono text-sm text-[var(--color-text-primary)]"
+									>{file.filename}</span
+								>
+							</div>
+							<div
+								class="mt-1 flex items-center gap-3 pl-[58px] font-mono text-xs text-[var(--color-text-muted)]"
+							>
+								<span>{formatBytes(file.size)}</span>
+								{#if file.quantType}
+									<span
+										class="rounded border border-[var(--color-accent)]/20 bg-[var(--color-accent-subtle)] px-1 py-0.5 text-xs font-medium text-[var(--color-accent)]"
+										>{file.quantType}</span
+									>
+								{/if}
+							</div>
+							{#if downloadErrors[file.filename]}
+								<p class="mt-1 pl-[58px] text-xs text-red-400">{downloadErrors[file.filename]}</p>
+							{/if}
+						</div>
+						<button
+							onclick={() => download(file.filename)}
+							disabled={downloading[file.filename]}
+							class="ml-4 shrink-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs font-medium text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-accent)]/30 hover:text-[var(--color-accent)] disabled:opacity-50"
+						>
+							{downloading[file.filename] ? 'Starting...' : 'Download'}
+						</button>
+					</div>
+				{/each}
+			</div>
+		{/if}
 	{/if}
 </div>
