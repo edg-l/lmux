@@ -1825,18 +1825,18 @@
 											class="max-w-[85%] rounded-2xl rounded-br-sm bg-[var(--color-accent-dim)] px-4 py-2.5"
 										>
 											<p class="text-sm whitespace-pre-wrap text-white">{msg.content}</p>
-											{#if msg.images && msg.images.length > 0}
-												<div class="mt-2 flex flex-wrap gap-2">
-													{#each msg.images as img (img.name)}
-														<img
-															src={img.dataUrl}
-															alt={img.name}
-															class="max-h-64 max-w-full rounded-lg border border-white/20 object-contain"
-														/>
-													{/each}
-												</div>
-											{/if}
 										</div>
+										{#if msg.images && msg.images.length > 0}
+											<div class="mt-1.5 flex flex-wrap gap-2">
+												{#each msg.images as img (img.name)}
+													<img
+														src={img.dataUrl}
+														alt={img.name}
+														class="max-h-[28rem] max-w-full rounded-lg border border-white/10 object-contain"
+													/>
+												{/each}
+											</div>
+										{/if}
 									</div>
 								{/if}
 							</div>
