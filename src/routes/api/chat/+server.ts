@@ -156,7 +156,9 @@ export const POST: RequestHandler = async ({ request }) => {
 							}
 
 							let toolResult: string;
-							let fileChanged: { path: string; operation: 'created' | 'modified' } | undefined;
+							let fileChanged:
+								| { path: string; operation: 'created' | 'modified'; oldContent?: string }
+								| undefined;
 
 							// Approval flow for run_command
 							if (tc.function.name === 'run_command' && typeof args.command === 'string') {
@@ -214,7 +216,10 @@ export const POST: RequestHandler = async ({ request }) => {
 											JSON.stringify({
 												type: 'file_changed',
 												path: fileChanged.path,
-												operation: fileChanged.operation
+												operation: fileChanged.operation,
+												...(fileChanged.oldContent !== undefined && {
+													old_content: fileChanged.oldContent
+												})
 											})
 										)
 									)

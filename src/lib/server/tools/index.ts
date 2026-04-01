@@ -23,7 +23,7 @@ export interface ToolDefinition {
 
 export interface ToolResult {
 	result: string;
-	fileChanged?: { path: string; operation: 'created' | 'modified' };
+	fileChanged?: { path: string; operation: 'created' | 'modified'; oldContent?: string };
 }
 
 const codingToolDefinitions: ToolDefinition[] = [

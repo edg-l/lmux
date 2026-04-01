@@ -79,6 +79,7 @@
 	let tokenUsage: { prompt: number; completion: number; total: number } | null = $state(null);
 	let expandedTools = $state<Set<number>>(new Set());
 	let changedFiles = $state<Map<string, 'created' | 'modified'>>(new Map());
+	let fileOriginals = $state<Map<string, string>>(new Map());
 
 	// Conversation state
 	let activeConversationId: number | null = $state(null);
@@ -88,6 +89,9 @@
 
 	// Session list ref
 	let sessionListComponent: SessionList | undefined = $state();
+
+	// File tree ref
+	let fileTreeRef: FileTree | undefined = $state();
 
 	let cleanupServerInfo: (() => void) | null = null;
 
@@ -161,6 +165,7 @@
 	async function selectConversation(id: number) {
 		activeConversationId = id;
 		changedFiles = new Map();
+		fileOriginals = new Map();
 		activeTab = 'chat';
 		try {
 			const res = await fetch(`/api/conversations/${id}`);
@@ -179,6 +184,7 @@
 		input = '';
 		tokenUsage = null;
 		changedFiles = new Map();
+		fileOriginals = new Map();
 		activeTab = 'chat';
 	}
 
@@ -522,6 +528,19 @@
 							const newChanged = new Map(changedFiles);
 							newChanged.set(parsed.path, parsed.operation);
 							changedFiles = newChanged;
+
+							if (parsed.old_content && !fileOriginals.has(parsed.path)) {
+								const newOriginals = new Map(fileOriginals);
+								newOriginals.set(parsed.path, parsed.old_content);
+								fileOriginals = newOriginals;
+							}
+
+							if (parsed.operation === 'created') {
+								const parentDir = parsed.path.includes('/')
+									? parsed.path.substring(0, parsed.path.lastIndexOf('/'))
+									: '';
+								fileTreeRef?.refreshDirectory(parentDir);
+							}
 						}
 					} catch {
 						/* skip */
@@ -682,6 +701,7 @@
 					</div>
 					<div class="flex-1 overflow-y-auto px-1 py-1">
 						<FileTree
+							bind:this={fileTreeRef}
 							{projectId}
 							entries={fileEntries}
 							{changedFiles}
@@ -1090,7 +1110,11 @@
 				{:else}
 					<!-- File preview -->
 					<div class="flex-1">
-						<FilePreview {projectId} filePath={selectedFilePath} />
+						<FilePreview
+							{projectId}
+							filePath={selectedFilePath}
+							oldContent={fileOriginals.get(selectedFilePath ?? '') ?? null}
+						/>
 					</div>
 				{/if}
 			</div>

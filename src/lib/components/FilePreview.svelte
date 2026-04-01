@@ -1,13 +1,17 @@
 <script lang="ts">
 	import { hljs } from '$lib/markdown';
 	import 'highlight.js/styles/github-dark.css';
+	import DiffView from './DiffView.svelte';
 
 	interface Props {
 		projectId: number;
 		filePath: string | null;
+		oldContent?: string | null;
 	}
 
-	let { projectId, filePath }: Props = $props();
+	let { projectId, filePath, oldContent = null }: Props = $props();
+
+	let diffMode = $state(false);
 
 	let content = $state('');
 	let totalLines = $state(0);
@@ -94,9 +98,29 @@
 			class="flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5"
 		>
 			<span class="truncate font-mono text-xs text-[var(--color-text-secondary)]">{filePath}</span>
-			<span class="shrink-0 font-mono text-xs text-[var(--color-text-muted)]"
-				>{totalLines} lines</span
-			>
+			<div class="flex shrink-0 items-center gap-2">
+				{#if oldContent != null}
+					<div class="flex overflow-hidden rounded border border-[var(--color-border)]">
+						<button
+							onclick={() => (diffMode = false)}
+							class="px-2 py-0.5 text-xs font-medium transition-colors {!diffMode
+								? 'bg-[var(--color-accent-dim)] text-white'
+								: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
+						>
+							Full
+						</button>
+						<button
+							onclick={() => (diffMode = true)}
+							class="border-l border-[var(--color-border)] px-2 py-0.5 text-xs font-medium transition-colors {diffMode
+								? 'bg-[var(--color-accent-dim)] text-white'
+								: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
+						>
+							Diff
+						</button>
+					</div>
+				{/if}
+				<span class="font-mono text-xs text-[var(--color-text-muted)]">{totalLines} lines</span>
+			</div>
 		</div>
 
 		{#if truncated}
@@ -109,15 +133,19 @@
 
 		<!-- Code content -->
 		<div class="flex-1 overflow-auto bg-[#0d1117]">
-			<pre class="file-preview-code"><code class="hljs"
-					>{@html (() => {
-						const highlighted = highlightContent(content, filePath);
-						return highlighted
-							.split('\n')
-							.map((line, i) => `<span class="line" data-line="${i + 1}">${line || ' '}</span>`)
-							.join('');
-					})()}</code
-				></pre>
+			{#if diffMode && oldContent != null}
+				<DiffView {oldContent} newContent={content} />
+			{:else}
+				<pre class="file-preview-code"><code class="hljs"
+						>{@html (() => {
+							const highlighted = highlightContent(content, filePath);
+							return highlighted
+								.split('\n')
+								.map((line, i) => `<span class="line" data-line="${i + 1}">${line || ' '}</span>`)
+								.join('');
+						})()}</code
+					></pre>
+			{/if}
 		</div>
 	</div>
 {/if}

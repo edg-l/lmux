@@ -17,6 +17,61 @@
 	let children = $state<Map<string, Entry[]>>(new Map());
 	let loading = $state<Set<string>>(new Set());
 
+	export async function refreshDirectory(dirPath: string) {
+		if (dirPath === '') {
+			try {
+				const res = await fetch(`/api/projects/${projectId}/files`);
+				if (res.ok) {
+					const data = await res.json();
+					entries = data.entries;
+				}
+			} catch {
+				// ignore
+			}
+			return;
+		}
+
+		if (children.has(dirPath)) {
+			// Re-fetch this directory
+			try {
+				const res = await fetch(
+					`/api/projects/${projectId}/files?path=${encodeURIComponent(dirPath)}`
+				);
+				if (res.ok) {
+					const data = await res.json();
+					const newChildren = new Map(children);
+					newChildren.set(dirPath, data.entries);
+					children = newChildren;
+				}
+			} catch {
+				// ignore
+			}
+			return;
+		}
+
+		// Walk up path segments to find the first loaded ancestor
+		const segments = dirPath.split('/');
+		for (let i = segments.length - 1; i >= 1; i--) {
+			const ancestor = segments.slice(0, i).join('/');
+			if (children.has(ancestor)) {
+				try {
+					const res = await fetch(
+						`/api/projects/${projectId}/files?path=${encodeURIComponent(ancestor)}`
+					);
+					if (res.ok) {
+						const data = await res.json();
+						const newChildren = new Map(children);
+						newChildren.set(ancestor, data.entries);
+						children = newChildren;
+					}
+				} catch {
+					// ignore
+				}
+				return;
+			}
+		}
+	}
+
 	async function toggleDir(path: string) {
 		const next = new Set(expanded);
 		if (next.has(path)) {

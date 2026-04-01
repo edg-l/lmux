@@ -3,7 +3,10 @@ import { resolveProjectPath } from './path-utils';
 export async function editProjectFile(
 	args: { path: string; old_string: string; new_string: string; replace_all?: boolean },
 	projectRoot: string
-): Promise<{ result: string; fileChanged?: { path: string; operation: 'modified' } }> {
+): Promise<{
+	result: string;
+	fileChanged?: { path: string; operation: 'modified'; oldContent?: string };
+}> {
 	const resolved = resolveProjectPath(projectRoot, args.path);
 	const file = Bun.file(resolved);
 
@@ -33,13 +36,15 @@ export async function editProjectFile(
 		};
 	}
 
+	const oldContent = content.length <= 512000 ? content : undefined;
+
 	if (args.replace_all) {
 		// Use split/join to avoid $ substitution patterns in String.replace
 		const newContent = content.split(args.old_string).join(args.new_string);
 		await Bun.write(resolved, newContent);
 		return {
 			result: `Replaced ${count} occurrences`,
-			fileChanged: { path: args.path, operation: 'modified' }
+			fileChanged: { path: args.path, operation: 'modified', oldContent }
 		};
 	}
 
@@ -52,6 +57,6 @@ export async function editProjectFile(
 
 	return {
 		result: `Replaced 1 occurrence at line ${lineNumber}`,
-		fileChanged: { path: args.path, operation: 'modified' }
+		fileChanged: { path: args.path, operation: 'modified', oldContent }
 	};
 }

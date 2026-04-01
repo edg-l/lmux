@@ -92,7 +92,7 @@ describe('editProjectFile', () => {
 			tmpDir
 		);
 		expect(result.result).toMatch(/Replaced 1 occurrence at line/);
-		expect(result.fileChanged).toEqual({ path: 'hello.ts', operation: 'modified' });
+		expect(result.fileChanged).toMatchObject({ path: 'hello.ts', operation: 'modified' });
 	});
 
 	it('old_string not found returns error message', async () => {
@@ -123,7 +123,7 @@ describe('editProjectFile', () => {
 			tmpDir
 		);
 		expect(result.result).toBe('Replaced 3 occurrences');
-		expect(result.fileChanged).toEqual({ path: 'hello.ts', operation: 'modified' });
+		expect(result.fileChanged).toMatchObject({ path: 'hello.ts', operation: 'modified' });
 	});
 
 	it('replacement string with $& is treated literally (no regex substitution)', async () => {
@@ -248,7 +248,7 @@ describe('insertProjectLines', () => {
 			tmpDir
 		);
 		expect(result.result).toMatch(/Inserted 1 lines at line 1/);
-		expect(result.fileChanged).toEqual({ path: 'code.ts', operation: 'modified' });
+		expect(result.fileChanged).toMatchObject({ path: 'code.ts', operation: 'modified' });
 	});
 });
 
