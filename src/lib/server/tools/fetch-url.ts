@@ -60,6 +60,15 @@ function htmlToReadableText(html: string): string {
 		const clean = content.replace(/<[^>]+>/g, '').trim();
 		return '- ' + clean + '\n';
 	});
+	// Preserve code blocks as markdown fenced code
+	text = text.replace(/<pre[^>]*>\s*<code[^>]*>([\s\S]*?)<\/code>\s*<\/pre>/gi, (_, code) => {
+		const clean = code.replace(/<[^>]+>/g, '');
+		return '\n```\n' + clean + '\n```\n';
+	});
+	text = text.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, (_, code) => {
+		const clean = code.replace(/<[^>]+>/g, '');
+		return '\n```\n' + clean + '\n```\n';
+	});
 	// Convert paragraphs and divs to line breaks
 	text = text.replace(/<\/?(p|div|br|tr|section|article)[^>]*>/gi, '\n');
 	// Convert table cells
