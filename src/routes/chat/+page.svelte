@@ -66,9 +66,9 @@
 				},
 				code({ text, lang }) {
 					const lines = text.split('\n');
-					const lineNumbers = lines.map((_, i) => `<span>${i + 1}</span>`).join('\n');
-					const langLabel = lang ? `<span class="code-lang">${lang}</span>` : '';
-					return `<div class="code-block">${langLabel}<pre><code class="hljs${lang ? ` language-${lang}` : ''}""><table class="code-table"><tr><td class="line-numbers" aria-hidden="true"><pre>${lineNumbers}</pre></td><td class="code-content"><pre>${text}</pre></td></tr></table></code></pre></div>`;
+					const nums = lines.map((_, i) => `<span>${i + 1}</span>`).join('\n');
+					const langLabel = lang ? `<div class="code-lang">${lang}</div>` : '';
+					return `<div class="code-block">${langLabel}<div class="code-body"><div class="line-numbers" aria-hidden="true">${nums}</div><pre class="code-content"><code class="hljs${lang ? ` language-${lang}` : ''}">${text}</code></pre></div></div>`;
 				}
 			}
 		}
@@ -2382,14 +2382,13 @@
 		opacity: 1;
 	}
 	:global(.assistant-content .code-block) {
-		position: relative;
 		margin: 0.75rem 0;
 		border-radius: 0.5rem;
 		overflow: hidden;
 		border: 1px solid var(--color-border);
+		background: #0d1117;
 	}
 	:global(.assistant-content .code-block .code-lang) {
-		display: block;
 		padding: 0.25rem 0.75rem;
 		font-size: 0.65rem;
 		color: var(--color-text-muted);
@@ -2397,44 +2396,41 @@
 		border-bottom: 1px solid var(--color-border);
 		font-family: ui-monospace, monospace;
 	}
-	:global(.assistant-content .code-block pre) {
-		margin: 0;
-		padding: 0;
-	}
-	:global(.assistant-content .code-block code) {
-		display: block;
+	:global(.assistant-content .code-body) {
+		display: flex;
 		overflow-x: auto;
-		padding: 0;
-	}
-	:global(.assistant-content .code-table) {
-		border-collapse: collapse;
-		width: 100%;
 	}
 	:global(.assistant-content .line-numbers) {
-		vertical-align: top;
-		padding: 0.75rem 0;
-		width: 1px;
-		white-space: nowrap;
-		user-select: none;
-		-webkit-user-select: none;
-	}
-	:global(.assistant-content .line-numbers pre) {
-		padding: 0 0.75rem;
+		flex-shrink: 0;
+		padding: 0.75rem 0.75rem 0.75rem 0.75rem;
 		text-align: right;
 		color: var(--color-text-muted);
-		opacity: 0.4;
-		font-size: 0.75rem;
-		line-height: 1.5;
-	}
-	:global(.assistant-content .code-content) {
-		vertical-align: top;
-		width: 100%;
-	}
-	:global(.assistant-content .code-content pre) {
-		padding: 0.75rem 0.75rem 0.75rem 0;
-		overflow-x: auto;
+		opacity: 0.35;
 		font-size: 0.8rem;
 		line-height: 1.5;
+		font-family: ui-monospace, monospace;
+		white-space: pre;
+		user-select: none;
+		-webkit-user-select: none;
+		border-right: 1px solid var(--color-border);
+	}
+	:global(.assistant-content .line-numbers span) {
+		display: block;
+	}
+	:global(.assistant-content .code-content) {
+		margin: 0;
+		padding: 0.75rem;
+		font-size: 0.8rem;
+		line-height: 1.5;
+		flex: 1;
+		min-width: 0;
+	}
+	:global(.assistant-content .code-content code) {
+		background: none;
+		padding: 0;
+	}
+	:global(.assistant-content .code-block .hljs) {
+		background: none;
 	}
 	:global(.assistant-content a) {
 		color: var(--color-accent);
