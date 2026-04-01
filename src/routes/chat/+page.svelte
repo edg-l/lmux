@@ -2035,10 +2035,20 @@
 								{/if}
 							</div>
 						{:else if msg.role === 'assistant'}
-							{@const segments = parseThinking(
-								msg.content || (streaming && idx === messages.length - 1 ? '...' : '')
-							)}
+							{@const isWaiting = !msg.content && streaming && idx === messages.length - 1}
+							{@const segments = parseThinking(msg.content || (isWaiting ? '...' : ''))}
 							<div class="max-w-[90%] space-y-2">
+								{#if isWaiting}
+									<div
+										class="flex items-center gap-2 rounded-2xl rounded-bl-sm border border-[var(--color-border)] bg-[var(--color-elevated)] px-4 py-3"
+									>
+										<span class="thinking-dots flex gap-1">
+											<span class="h-2 w-2 rounded-full bg-[var(--color-text-muted)]"></span>
+											<span class="h-2 w-2 rounded-full bg-[var(--color-text-muted)]"></span>
+											<span class="h-2 w-2 rounded-full bg-[var(--color-text-muted)]"></span>
+										</span>
+									</div>
+								{/if}
 								{#if msg.tool_calls && msg.tool_calls.length > 0}
 									<div class="flex flex-wrap gap-1">
 										{#each msg.tool_calls as tc}
@@ -2063,7 +2073,7 @@
 										{/each}
 									</div>
 								{/if}
-								{#each segments as segment, segIdx}
+								{#each isWaiting ? [] : segments as segment, segIdx}
 									{#if segment.type === 'thinking'}
 										{@const isLast = idx === messages.length - 1}
 										{@const isCollapsed =
@@ -2286,6 +2296,30 @@
 </div>
 
 <style>
+	.thinking-dots span {
+		animation: thinking-bounce 1.4s infinite ease-in-out;
+	}
+	.thinking-dots span:nth-child(1) {
+		animation-delay: 0s;
+	}
+	.thinking-dots span:nth-child(2) {
+		animation-delay: 0.2s;
+	}
+	.thinking-dots span:nth-child(3) {
+		animation-delay: 0.4s;
+	}
+	@keyframes thinking-bounce {
+		0%,
+		80%,
+		100% {
+			opacity: 0.3;
+			transform: scale(0.8);
+		}
+		40% {
+			opacity: 1;
+			transform: scale(1);
+		}
+	}
 	:global(.assistant-content a) {
 		color: var(--color-accent);
 		text-decoration: underline;
