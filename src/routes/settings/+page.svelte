@@ -377,7 +377,9 @@
 				{#if landlockAvailable === false}
 					<div class="rounded border border-amber-500/20 bg-amber-500/5 p-2 text-xs text-amber-300">
 						<p class="mb-1 font-medium">Install landlock-restrict:</p>
-						<code class="text-[0.7rem]">cargo install landlock-restrict</code>
+						<code class="text-[0.7rem]"
+							>go install github.com/landlock-lsm/go-landlock/cmd/landlock-restrict@latest</code
+						>
 						<p class="mt-1 text-[var(--color-text-muted)]">
 							Requires Linux 5.13+ with Landlock enabled. Commands will run unsandboxed until
 							installed.
