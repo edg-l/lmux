@@ -23,6 +23,8 @@ export function buildSandboxedCommand(
 				projectPath,
 				'-rw',
 				'/tmp',
+				'-rwfiles',
+				'/dev/null',
 				'--',
 				bashPath,
 				'-c',
