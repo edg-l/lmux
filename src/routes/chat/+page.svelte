@@ -26,6 +26,7 @@
 		title: string | null;
 		model_id: number | null;
 		model_name: string | null;
+		tags: string;
 		created_at: string;
 		updated_at: string;
 	}
@@ -107,13 +108,24 @@
 
 	// Feature 1: Conversation search
 	let searchQuery = $state('');
-	let filteredConversations = $derived(
-		searchQuery.trim()
-			? conversations.filter((c) =>
-					(c.title ?? '').toLowerCase().includes(searchQuery.trim().toLowerCase())
-				)
-			: conversations
-	);
+	let filteredConversations = $derived.by(() => {
+		let result = conversations;
+		if (searchQuery.trim()) {
+			const q = searchQuery.trim().toLowerCase();
+			result = result.filter((c) => (c.title ?? '').toLowerCase().includes(q));
+		}
+		if (activeTag) {
+			const tag = activeTag;
+			result = result.filter((c) => {
+				const tags = (c.tags ?? '')
+					.split(',')
+					.map((t) => t.trim())
+					.filter(Boolean);
+				return tags.includes(tag);
+			});
+		}
+		return result;
+	});
 
 	// Feature 2: Export chat
 	let exportOpen = $state(false);
@@ -130,6 +142,33 @@
 	// Feature 7: Image/Vision support
 	let pendingImages = $state<Array<{ name: string; base64: string; dataUrl: string }>>([]);
 	let imageInputEl: HTMLInputElement | undefined = $state();
+
+	// Feature 9: Server logs panel
+	let logsOpen = $state(false);
+	let serverLogs = $state<string[]>([]);
+	let logsContainer: HTMLDivElement | undefined = $state();
+
+	// Feature 10: Conversation tags
+	let editingTagsConvId: number | null = $state(null);
+	let tagInput = $state('');
+	let activeTag: string | null = $state(null);
+
+	// Feature 11: Prompt presets
+	interface PresetInfo {
+		id: number;
+		name: string;
+		system_prompt: string | null;
+		temperature: number | null;
+		top_p: number | null;
+		top_k: number | null;
+		min_p: number | null;
+		repeat_penalty: number | null;
+		thinking_budget: number | null;
+	}
+	let presets = $state<PresetInfo[]>([]);
+	let presetDropdownOpen = $state(false);
+	let savePresetOpen = $state(false);
+	let savePresetName = $state('');
 
 	function handleImageSelect(e: Event) {
 		const input = e.target as HTMLInputElement;
@@ -159,6 +198,7 @@
 		loadConversations();
 		loadToolsEnabled();
 		loadAvailableModels();
+		loadPresets();
 		const cleanupServerInfo = loadServerInfo();
 		document.addEventListener('keydown', handleGlobalKeydown);
 		return () => {
@@ -259,7 +299,11 @@
 		const es = new EventSource('/api/server/status');
 		es.onmessage = (event) => {
 			try {
-				serverInfo = JSON.parse(event.data);
+				const data = JSON.parse(event.data);
+				serverInfo = data;
+				if (data.stderr && Array.isArray(data.stderr)) {
+					serverLogs = data.stderr.slice(-100);
+				}
 				if (serverInfo?.modelId && serverInfo.modelId !== samplingModelId) {
 					samplingModelId = serverInfo.modelId;
 					loadSamplingParams(serverInfo.modelId);
@@ -975,6 +1019,117 @@
 		editInput = '';
 	}
 
+	// Auto-scroll logs to bottom
+	$effect(() => {
+		if (logsContainer && serverLogs.length > 0) {
+			serverLogs[serverLogs.length - 1];
+			requestAnimationFrame(() => {
+				if (logsContainer) logsContainer.scrollTop = logsContainer.scrollHeight;
+			});
+		}
+	});
+
+	// Unique tags across all conversations
+	let allTags = $derived.by(() => {
+		const tagSet = new Set<string>();
+		for (const c of conversations) {
+			const tags = (c.tags ?? '')
+				.split(',')
+				.map((t) => t.trim())
+				.filter(Boolean);
+			for (const t of tags) tagSet.add(t);
+		}
+		return [...tagSet].sort();
+	});
+
+	async function saveConversationTags(convId: number, tags: string) {
+		try {
+			await fetch(`/api/conversations/${convId}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ tags })
+			});
+			conversations = conversations.map((c) => (c.id === convId ? { ...c, tags } : c));
+		} catch {
+			// ignore
+		}
+	}
+
+	function startEditingTags(conv: Conversation) {
+		editingTagsConvId = conv.id;
+		tagInput = conv.tags ?? '';
+	}
+
+	function finishEditingTags() {
+		if (editingTagsConvId !== null) {
+			saveConversationTags(editingTagsConvId, tagInput);
+			editingTagsConvId = null;
+			tagInput = '';
+		}
+	}
+
+	async function loadPresets() {
+		try {
+			const res = await fetch('/api/presets');
+			if (res.ok) presets = await res.json();
+		} catch {
+			// ignore
+		}
+	}
+
+	function applyPreset(preset: PresetInfo) {
+		if (preset.temperature != null) temperature = preset.temperature;
+		if (preset.top_p != null) top_p = preset.top_p;
+		if (preset.top_k != null) top_k = preset.top_k;
+		if (preset.min_p != null) min_p = preset.min_p;
+		if (preset.repeat_penalty != null) repeat_penalty = preset.repeat_penalty;
+		if (preset.thinking_budget != null) {
+			if (preset.thinking_budget >= 0) {
+				thinkingBudgetEnabled = true;
+				thinkingBudgetValue = preset.thinking_budget;
+			} else {
+				thinkingBudgetEnabled = false;
+			}
+		}
+		if (preset.system_prompt != null) modelSystemPrompt = preset.system_prompt;
+		presetDropdownOpen = false;
+	}
+
+	async function saveAsPreset() {
+		const name = savePresetName.trim();
+		if (!name) return;
+		try {
+			await fetch('/api/presets', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					name,
+					system_prompt: modelSystemPrompt,
+					temperature,
+					top_p,
+					top_k,
+					min_p,
+					repeat_penalty,
+					thinking_budget: thinkingBudget
+				})
+			});
+			await loadPresets();
+			savePresetOpen = false;
+			savePresetName = '';
+		} catch {
+			// ignore
+		}
+	}
+
+	async function deletePresetById(id: number) {
+		try {
+			await fetch(`/api/presets/${id}`, { method: 'DELETE' });
+			await loadPresets();
+		} catch {
+			// ignore
+		}
+	}
+
 	function handleGlobalKeydown(e: KeyboardEvent) {
 		const target = e.target as HTMLElement;
 		const tagName = target.tagName.toLowerCase();
@@ -1021,6 +1176,21 @@
 			/>
 		</div>
 
+		{#if allTags.length > 0}
+			<div class="flex flex-wrap gap-1 border-b border-[var(--color-border)] px-2 py-1.5">
+				{#each allTags as tag}
+					<button
+						onclick={() => (activeTag = activeTag === tag ? null : tag)}
+						class="rounded-full px-2 py-0.5 text-xs transition-colors {activeTag === tag
+							? 'bg-[var(--color-accent)] text-white'
+							: 'bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
+					>
+						{tag}
+					</button>
+				{/each}
+			</div>
+		{/if}
+
 		<div class="flex-1 overflow-y-auto">
 			{#each filteredConversations as conv}
 				<div
@@ -1051,8 +1221,34 @@
 						<p class="font-mono text-xs text-[var(--color-text-muted)]">
 							{formatTime(conv.updated_at)}
 						</p>
+						{#if conv.tags}
+							<div class="mt-0.5 flex flex-wrap gap-0.5">
+								{#each conv.tags
+									.split(',')
+									.map((t) => t.trim())
+									.filter(Boolean) as tag}
+									<span
+										class="rounded-full bg-[var(--color-accent)]/15 px-1.5 py-0 text-[10px] text-[var(--color-accent)]"
+										>{tag}</span
+									>
+								{/each}
+							</div>
+						{/if}
 					</button>
-					{#if confirmDeleteId === conv.id}
+					{#if editingTagsConvId === conv.id}
+						<div class="mr-2 flex items-center">
+							<input
+								type="text"
+								bind:value={tagInput}
+								onblur={finishEditingTags}
+								onkeydown={(e) => {
+									if (e.key === 'Enter') finishEditingTags();
+								}}
+								placeholder="tag1, tag2"
+								class="w-20 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1 py-0.5 text-[10px] text-[var(--color-text-secondary)] focus:border-[var(--color-accent)] focus:outline-none"
+							/>
+						</div>
+					{:else if confirmDeleteId === conv.id}
 						<button
 							onclick={() => deleteConversation(conv.id)}
 							class="mr-1 px-1.5 py-0.5 text-xs text-red-400">Yes</button
@@ -1062,11 +1258,35 @@
 							class="mr-2 text-xs text-[var(--color-text-muted)]">No</button
 						>
 					{:else}
-						<button
-							onclick={() => (confirmDeleteId = conv.id)}
-							class="mr-2 text-xs text-[var(--color-text-muted)] opacity-0 group-hover:opacity-100 hover:text-red-400"
-							>Del</button
-						>
+						<div class="mr-2 flex items-center gap-1 opacity-0 group-hover:opacity-100">
+							<button
+								onclick={(e) => {
+									e.stopPropagation();
+									startEditingTags(conv);
+								}}
+								class="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
+								title="Edit tags"
+							>
+								<svg
+									class="h-3 w-3"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+									stroke-width="1.5"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z"
+									/>
+									<path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6z" />
+								</svg>
+							</button>
+							<button
+								onclick={() => (confirmDeleteId = conv.id)}
+								class="text-xs text-[var(--color-text-muted)] hover:text-red-400">Del</button
+							>
+						</div>
 					{/if}
 				</div>
 			{/each}
@@ -1269,6 +1489,29 @@
 			</button>
 
 			<button
+				onclick={() => (logsOpen = !logsOpen)}
+				class="rounded p-1 transition-colors {logsOpen
+					? 'text-[var(--color-accent)]'
+					: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
+				aria-label="Server logs"
+				title="Server logs"
+			>
+				<svg
+					class="h-4 w-4"
+					fill="none"
+					stroke="currentColor"
+					viewBox="0 0 24 24"
+					stroke-width="1.5"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"
+					/>
+				</svg>
+			</button>
+
+			<button
 				class="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
 				aria-label="Keyboard shortcuts"
 				title="Shortcuts: Ctrl+N new chat, Ctrl+Shift+S stop server, Esc cancel generation"
@@ -1288,6 +1531,32 @@
 				</svg>
 			</button>
 		</div>
+
+		<!-- Server Logs panel -->
+		{#if logsOpen}
+			<div class="border-b border-[var(--color-border)] bg-[#0d1117] px-4 py-2">
+				<div class="mb-1 flex items-center justify-between">
+					<span class="text-xs font-medium tracking-wide text-[var(--color-text-muted)] uppercase"
+						>Server Logs</span
+					>
+					<span class="font-mono text-xs text-[var(--color-text-muted)]"
+						>{serverLogs.length} lines</span
+					>
+				</div>
+				<div
+					bind:this={logsContainer}
+					class="max-h-48 overflow-y-auto rounded border border-[var(--color-border)] bg-[#010409] p-2"
+				>
+					{#if serverLogs.length === 0}
+						<p class="font-mono text-xs text-[var(--color-text-muted)]">No logs yet</p>
+					{:else}
+						{#each serverLogs as line}
+							<p class="font-mono text-xs leading-5 text-green-400/80">{line}</p>
+						{/each}
+					{/if}
+				</div>
+			</div>
+		{/if}
 
 		<!-- Sampling panel -->
 		{#if samplingOpen}
@@ -1318,6 +1587,66 @@
 								class="rounded border border-[var(--color-accent)]/20 bg-[var(--color-accent-subtle)] px-2 py-0.5 text-xs text-[var(--color-accent)] transition-colors hover:border-[var(--color-accent)]/40"
 								>Save</button
 							>
+							<span class="mx-1 text-[var(--color-border)]">|</span>
+							<div class="relative">
+								<button
+									onclick={() => (presetDropdownOpen = !presetDropdownOpen)}
+									class="rounded border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
+									>Presets</button
+								>
+								{#if presetDropdownOpen}
+									<div
+										class="absolute right-0 z-20 mt-1 w-48 rounded-md border border-[var(--color-border)] bg-[var(--color-elevated)] py-1 shadow-lg"
+									>
+										{#if presets.length === 0}
+											<p class="px-3 py-2 text-xs text-[var(--color-text-muted)]">No presets</p>
+										{:else}
+											{#each presets as preset}
+												<div
+													class="group/preset flex items-center justify-between px-3 py-1.5 hover:bg-[var(--color-surface)]"
+												>
+													<button
+														onclick={() => applyPreset(preset)}
+														class="flex-1 text-left text-xs text-[var(--color-text-secondary)]"
+														>{preset.name}</button
+													>
+													<button
+														onclick={() => deletePresetById(preset.id)}
+														class="text-xs text-[var(--color-text-muted)] opacity-0 group-hover/preset:opacity-100 hover:text-red-400"
+														>x</button
+													>
+												</div>
+											{/each}
+										{/if}
+										<div class="border-t border-[var(--color-border)] px-3 pt-1.5 pb-1">
+											{#if savePresetOpen}
+												<div class="flex gap-1">
+													<input
+														type="text"
+														bind:value={savePresetName}
+														placeholder="Preset name"
+														onkeydown={(e) => {
+															if (e.key === 'Enter') saveAsPreset();
+														}}
+														class="flex-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-xs text-[var(--color-text-secondary)] focus:border-[var(--color-accent)] focus:outline-none"
+													/>
+													<button
+														onclick={saveAsPreset}
+														class="rounded bg-[var(--color-accent-dim)] px-2 py-0.5 text-xs text-white hover:bg-[var(--color-accent)]"
+														>OK</button
+													>
+												</div>
+											{:else}
+												<button
+													onclick={() => (savePresetOpen = true)}
+													class="w-full text-left text-xs text-[var(--color-accent)] hover:underline"
+													>Save as Preset</button
+												>
+											{/if}
+										</div>
+									</div>
+								{/if}
+							</div>
 						</div>
 					</div>
 					<div class="grid grid-cols-5 gap-4">

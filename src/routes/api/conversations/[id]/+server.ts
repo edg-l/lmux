@@ -4,7 +4,8 @@ import {
 	getConversation,
 	deleteConversation,
 	getMessages,
-	updateConversationModel
+	updateConversationModel,
+	updateConversationTags
 } from '$lib/server/conversations';
 import { getModel } from '$lib/server/models';
 
@@ -28,7 +29,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		return json({ error: 'Conversation not found' }, { status: 404 });
 	}
 
-	const body = (await request.json()) as { model_id?: number };
+	const body = (await request.json()) as { model_id?: number; tags?: string };
+
+	if (typeof body.tags === 'string') {
+		updateConversationTags(id, body.tags);
+		return json({ ok: true });
+	}
+
 	if (typeof body.model_id !== 'number') {
 		return json({ error: 'Missing or invalid model_id' }, { status: 400 });
 	}

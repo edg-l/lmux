@@ -5,6 +5,7 @@ export interface Conversation {
 	title: string | null;
 	model_id: number | null;
 	model_name: string | null;
+	tags: string;
 	created_at: string;
 	updated_at: string;
 }
@@ -127,4 +128,11 @@ export function updateConversationTitle(id: number, title: string): void {
 		'UPDATE conversations SET title = $title, updated_at = CURRENT_TIMESTAMP WHERE id = $id',
 		{ $id: id, $title: title }
 	);
+}
+
+export function updateConversationTags(id: number, tags: string): void {
+	execute('UPDATE conversations SET tags = $tags, updated_at = CURRENT_TIMESTAMP WHERE id = $id', {
+		$id: id,
+		$tags: tags
+	});
 }
