@@ -1,5 +1,6 @@
 export interface ToolCall {
 	id: string;
+	type: 'function';
 	function: { name: string; arguments: string };
 }
 
@@ -76,6 +77,7 @@ export async function consumeLlamaStream(body: ReadableStream<Uint8Array>): Prom
 		.sort(([a], [b]) => a - b)
 		.map(([, tc]) => ({
 			id: tc.id,
+			type: 'function' as const,
 			function: { name: tc.name, arguments: tc.arguments }
 		}));
 
