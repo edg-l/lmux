@@ -19,6 +19,11 @@ import sql from 'highlight.js/lib/languages/sql';
 import yaml from 'highlight.js/lib/languages/yaml';
 import markdown from 'highlight.js/lib/languages/markdown';
 import diff from 'highlight.js/lib/languages/diff';
+import ini from 'highlight.js/lib/languages/ini';
+import dockerfile from 'highlight.js/lib/languages/dockerfile';
+import makefile from 'highlight.js/lib/languages/makefile';
+import scss from 'highlight.js/lib/languages/scss';
+import plaintext from 'highlight.js/lib/languages/plaintext';
 
 hljs.registerLanguage('javascript', javascript);
 hljs.registerLanguage('js', javascript);
@@ -45,6 +50,13 @@ hljs.registerLanguage('yml', yaml);
 hljs.registerLanguage('markdown', markdown);
 hljs.registerLanguage('md', markdown);
 hljs.registerLanguage('diff', diff);
+hljs.registerLanguage('ini', ini);
+hljs.registerLanguage('toml', ini);
+hljs.registerLanguage('dockerfile', dockerfile);
+hljs.registerLanguage('makefile', makefile);
+hljs.registerLanguage('scss', scss);
+hljs.registerLanguage('plaintext', plaintext);
+hljs.registerLanguage('txt', plaintext);
 
 marked.use(
 	markedHighlight({

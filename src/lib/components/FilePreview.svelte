@@ -15,37 +15,29 @@
 	let loading = $state(false);
 	let error = $state('');
 
-	const EXT_TO_LANG: Record<string, string> = {
-		js: 'javascript',
-		jsx: 'javascript',
-		ts: 'typescript',
-		tsx: 'typescript',
-		py: 'python',
-		rb: 'ruby',
-		rs: 'rust',
-		go: 'go',
-		java: 'java',
-		c: 'c',
-		cpp: 'cpp',
+	// Only needed for extensions/filenames that don't match a registered hljs language name
+	const LANG_OVERRIDES: Record<string, string> = {
 		h: 'c',
 		hpp: 'cpp',
-		css: 'css',
-		html: 'html',
-		xml: 'xml',
-		json: 'json',
-		yaml: 'yaml',
-		yml: 'yaml',
-		md: 'markdown',
-		sh: 'bash',
-		bash: 'bash',
-		sql: 'sql',
-		diff: 'diff',
-		svelte: 'html'
+		jsx: 'javascript',
+		tsx: 'typescript',
+		svelte: 'html',
+		cfg: 'ini',
+		conf: 'ini',
+		log: 'plaintext'
+	};
+
+	const FILENAME_OVERRIDES: Record<string, string> = {
+		Dockerfile: 'dockerfile',
+		Makefile: 'makefile',
+		'Cargo.lock': 'toml'
 	};
 
 	function detectLanguage(path: string): string | null {
-		const ext = path.split('.').pop()?.toLowerCase() ?? '';
-		return EXT_TO_LANG[ext] ?? null;
+		const filename = path.split('/').pop() ?? '';
+		if (FILENAME_OVERRIDES[filename]) return FILENAME_OVERRIDES[filename];
+		const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+		return LANG_OVERRIDES[ext] ?? (ext || null);
 	}
 
 	function highlightContent(text: string, path: string): string {
