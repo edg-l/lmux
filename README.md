@@ -1,42 +1,67 @@
-# sv
+# lmux
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A lightweight web UI for [llama.cpp](https://github.com/ggerganov/llama.cpp). Manage local GGUF models, browse and download from HuggingFace, configure launch profiles based on your hardware, and chat with running models.
 
-## Creating a project
+Built with SvelteKit, Bun, and SQLite.
 
-If you're seeing this, you've probably already done this step. Congrats!
+## Features
 
-```sh
-# create a new project
-npx sv create my-app
-```
+- **Model Library** -- Scan local GGUF files and HuggingFace cache, parse metadata (architecture, params, quant type, context length), display in a browsable grid
+- **HuggingFace Integration** -- Search models, browse trending, inspect repo files with VRAM fit indicators, download with progress/resume/cancel
+- **Hardware Detection** -- NVIDIA (nvidia-smi), AMD (rocm-smi), CPU, RAM, and disk. Used to auto-generate launch profiles
+- **VRAM Recommendations** -- Estimates VRAM for model weights + KV cache. Layers-first allocation strategy (maximize GPU layers, then fit context into remaining VRAM)
+- **Launch Profiles** -- Per-model saved configurations: GPU layers, context size, threads, batch size, flash attention, KV cache type, port, extra flags
+- **Server Management** -- Spawn/stop llama-server, health polling, log viewer, one-server-at-a-time with mutex serialization
+- **Chat** -- SSE streaming, markdown rendering with KaTeX math support, `<think>` block collapsing, conversation CRUD, adjustable sampling parameters
+- **Settings** -- Models directory, llama-server path (auto-detect), HuggingFace token, VRAM headroom
 
-To recreate this project with the same configuration:
+## Requirements
 
-```sh
-# recreate this project
-bun x sv@0.13.0 create --template minimal --types ts --add prettier eslint vitest="usages:unit,component" tailwindcss="plugins:typography,forms" sveltekit-adapter="adapter:auto" mcp="ide:claude-code+setup:local" --install bun .
-```
+- [Bun](https://bun.sh/) (runtime and package manager)
+- [llama.cpp](https://github.com/ggerganov/llama.cpp) server binary (`llama-server`)
+- Linux (hardware detection reads `/proc/cpuinfo`, `/proc/meminfo`, uses `nvidia-smi`/`rocm-smi`)
 
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
+## Getting Started
 
 ```sh
-npm run build
+# Install dependencies
+bun install
+
+# Start dev server
+bun run dev
+
+# Open http://localhost:5173
 ```
 
-You can preview the production build with `npm run preview`.
+On first launch, lmux will:
+1. Create its database at `~/.local/share/lmux/lmux.db`
+2. Create a models directory at `~/.local/share/lmux/models/`
+3. Auto-detect your hardware and llama-server path
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+Go to **Settings** to configure paths and your HuggingFace token, then browse **Models** to scan local files or **Search** to find models on HuggingFace.
+
+## Development
+
+```sh
+bun run dev          # Start dev server
+bun run check        # TypeScript type checking
+bun run lint         # Prettier + ESLint
+bun run format       # Auto-format
+bun run test         # Run tests
+```
+
+### Database Migrations
+
+Schema migrations use [migralite](https://github.com/i9or/migralite). SQL files live in `src/lib/server/migrations/` and are applied automatically on startup. To add a migration, create a new file like `002_add_column.sql`.
+
+## Tech Stack
+
+- **Runtime**: [Bun](https://bun.sh/) (bun:sqlite, Bun.spawn)
+- **Framework**: [SvelteKit](https://svelte.dev/) with Svelte 5 runes
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/) v4 with dark theme
+- **Markdown**: [marked](https://github.com/markedjs/marked) + [DOMPurify](https://github.com/cure53/DOMPurify) + [KaTeX](https://katex.org/)
+- **Migrations**: [migralite](https://github.com/i9or/migralite)
+
+## License
+
+MIT
