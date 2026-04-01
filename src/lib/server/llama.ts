@@ -1,4 +1,5 @@
 import type { Subprocess } from 'bun';
+import { Mutex } from './mutex';
 
 export interface ServerState {
 	status: 'stopped' | 'starting' | 'ready' | 'error';
@@ -45,6 +46,7 @@ let serverState: ServerState = {
 
 let childProcess: Subprocess | null = null;
 let healthInterval: ReturnType<typeof setInterval> | null = null;
+const serverMutex = new Mutex();
 
 // Kill llama-server if our process exits, so it doesn't orphan and eat VRAM
 function cleanupOnExit() {
@@ -88,141 +90,151 @@ export function getServerState(): ServerState {
 }
 
 export async function startServer(config: StartConfig): Promise<void> {
-	// One-server-at-a-time enforcement
-	if (serverState.status === 'starting' || serverState.status === 'ready') {
-		throw new Error('A server is already running. Stop it before starting a new one.');
-	}
-
-	const args = [
-		'-m',
-		config.modelPath,
-		'-ngl',
-		String(config.gpuLayers),
-		'-c',
-		String(config.contextSize),
-		'--port',
-		String(config.port)
-	];
-
-	if (config.threads && config.threads > 0) {
-		args.push('--threads', String(config.threads));
-	}
-	if (config.batchSize && config.batchSize > 0) {
-		args.push('-b', String(config.batchSize));
-	}
-	if (config.flashAttn) {
-		args.push('--flash-attn', config.flashAttn);
-	}
-	if (config.kvCacheType) {
-		args.push('-ctk', config.kvCacheType, '-ctv', config.kvCacheType);
-	}
-
-	if (config.extraFlags) {
-		const extra = config.extraFlags.trim().split(/\s+/);
-		args.push(...extra);
-	}
-
-	serverState = {
-		status: 'starting',
-		modelId: config.modelId,
-		modelName: config.modelName,
-		port: config.port,
-		contextSize: config.contextSize,
-		pid: null,
-		startedAt: new Date(),
-		error: null,
-		stderr: [],
-		lastTokensPerSecond: null
-	};
-
+	const release = await serverMutex.lock();
 	try {
-		childProcess = Bun.spawn({
-			cmd: [config.llamaServerPath, ...args],
-			stdout: 'pipe',
-			stderr: 'pipe'
-		});
+		// One-server-at-a-time enforcement
+		if (serverState.status === 'starting' || serverState.status === 'ready') {
+			throw new Error('A server is already running. Stop it before starting a new one.');
+		}
 
-		serverState.pid = childProcess.pid;
+		const args = [
+			'-m',
+			config.modelPath,
+			'-ngl',
+			String(config.gpuLayers),
+			'-c',
+			String(config.contextSize),
+			'--port',
+			String(config.port)
+		];
 
-		// Read stderr in the background
-		readStderr(childProcess);
+		if (config.threads && config.threads > 0) {
+			args.push('--threads', String(config.threads));
+		}
+		if (config.batchSize && config.batchSize > 0) {
+			args.push('-b', String(config.batchSize));
+		}
+		if (config.flashAttn) {
+			args.push('--flash-attn', config.flashAttn);
+		}
+		if (config.kvCacheType) {
+			args.push('-ctk', config.kvCacheType, '-ctv', config.kvCacheType);
+		}
 
-		// Monitor process exit
-		childProcess.exited.then((exitCode) => {
-			if (healthInterval) {
-				clearInterval(healthInterval);
-				healthInterval = null;
-			}
+		if (config.extraFlags) {
+			const extra = config.extraFlags.trim().split(/\s+/);
+			args.push(...extra);
+		}
 
-			if (serverState.status !== 'stopped') {
-				serverState = {
-					...serverState,
-					status: exitCode === 0 ? 'stopped' : 'error',
-					pid: null,
-					error: exitCode !== 0 ? `Process exited with code ${exitCode}` : null
-				};
-			}
-
-			childProcess = null;
-		});
-
-		// Start health polling
-		startHealthPolling(config.port);
-	} catch (err) {
 		serverState = {
-			...serverState,
-			status: 'error',
+			status: 'starting',
+			modelId: config.modelId,
+			modelName: config.modelName,
+			port: config.port,
+			contextSize: config.contextSize,
 			pid: null,
-			error: err instanceof Error ? err.message : 'Failed to spawn llama-server'
+			startedAt: new Date(),
+			error: null,
+			stderr: [],
+			lastTokensPerSecond: null
 		};
-		throw err;
+
+		try {
+			childProcess = Bun.spawn({
+				cmd: [config.llamaServerPath, ...args],
+				stdout: 'pipe',
+				stderr: 'pipe'
+			});
+
+			serverState.pid = childProcess.pid;
+
+			// Read stderr in the background
+			readStderr(childProcess);
+
+			// Monitor process exit
+			childProcess.exited.then((exitCode) => {
+				if (healthInterval) {
+					clearInterval(healthInterval);
+					healthInterval = null;
+				}
+
+				if (serverState.status !== 'stopped') {
+					serverState = {
+						...serverState,
+						status: exitCode === 0 ? 'stopped' : 'error',
+						pid: null,
+						error: exitCode !== 0 ? `Process exited with code ${exitCode}` : null
+					};
+				}
+
+				childProcess = null;
+			});
+
+			// Start health polling
+			startHealthPolling(config.port);
+		} catch (err) {
+			serverState = {
+				...serverState,
+				status: 'error',
+				pid: null,
+				error: err instanceof Error ? err.message : 'Failed to spawn llama-server'
+			};
+			throw err;
+		}
+	} finally {
+		release();
 	}
 }
 
 export async function stopServer(): Promise<void> {
-	if (!childProcess) {
+	const release = await serverMutex.lock();
+	try {
+		if (!childProcess) {
+			serverState = {
+				...serverState,
+				status: 'stopped',
+				pid: null,
+				error: null
+			};
+			return;
+		}
+
+		if (healthInterval) {
+			clearInterval(healthInterval);
+			healthInterval = null;
+		}
+
+		// Send SIGTERM
+		childProcess.kill('SIGTERM');
+
+		// Wait up to 5 seconds for graceful shutdown
+		const exited = await Promise.race([
+			childProcess.exited.then(() => true),
+			new Promise<false>((resolve) => setTimeout(() => resolve(false), 5000))
+		]);
+
+		if (!exited && childProcess) {
+			childProcess.kill('SIGKILL');
+			await childProcess.exited;
+		}
+
+		childProcess = null;
+
 		serverState = {
-			...serverState,
 			status: 'stopped',
+			modelId: null,
+			modelName: null,
+			port: serverState.port,
+			contextSize: null,
 			pid: null,
-			error: null
+			startedAt: null,
+			error: null,
+			stderr: [],
+			lastTokensPerSecond: null
 		};
-		return;
+	} finally {
+		release();
 	}
-
-	if (healthInterval) {
-		clearInterval(healthInterval);
-		healthInterval = null;
-	}
-
-	// Send SIGTERM
-	childProcess.kill('SIGTERM');
-
-	// Wait up to 5 seconds for graceful shutdown
-	const exited = await Promise.race([
-		childProcess.exited.then(() => true),
-		new Promise<false>((resolve) => setTimeout(() => resolve(false), 5000))
-	]);
-
-	if (!exited && childProcess) {
-		childProcess.kill('SIGKILL');
-		await childProcess.exited;
-	}
-
-	childProcess = null;
-
-	serverState = {
-		status: 'stopped',
-		modelId: null,
-		modelName: null,
-		port: serverState.port,
-		contextSize: null,
-		pid: null,
-		startedAt: null,
-		error: null,
-		stderr: [],
-		lastTokensPerSecond: null
-	};
 }
 
 function startHealthPolling(port: number) {

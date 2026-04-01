@@ -1,6 +1,6 @@
 import { readFileSync, statfsSync } from 'node:fs';
 import { getDb } from './db';
-import { getModelsDir } from './settings';
+import { getModelsDir, getSetting } from './settings';
 
 export interface GpuInfo {
 	name: string;
@@ -224,6 +224,12 @@ function detectHardware(): HardwareProfile {
 		disk: detectDisk(),
 		detected_at: new Date().toISOString()
 	};
+}
+
+export function getUsableVram(hardware: HardwareProfile): number {
+	const totalVram = hardware.gpus.reduce((sum, gpu) => sum + gpu.vram_total, 0);
+	const headroomMb = parseInt(getSetting('vram_headroom_mb')) || 512;
+	return Math.max(0, totalVram - headroomMb * 1024 * 1024);
 }
 
 export function getHardwareProfile(): HardwareProfile {

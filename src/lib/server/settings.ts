@@ -9,7 +9,8 @@ const HF_CACHE_DIR = join(homedir(), '.cache', 'huggingface', 'hub');
 const DEFAULTS: Record<string, string> = {
 	models_dir: DEFAULT_MODELS_DIR,
 	llama_server_path: '',
-	hf_token: ''
+	hf_token: '',
+	vram_headroom_mb: '512'
 };
 
 export function getSetting(key: string): string {

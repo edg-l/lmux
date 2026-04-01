@@ -3,7 +3,7 @@ import { join, basename } from 'node:path';
 import { queryAll, queryOne, execute } from './db';
 import { getModelInfo } from './gguf';
 import { getModelsDir, getHfCacheDir } from './settings';
-import { getHardwareProfile } from './hardware';
+import { getHardwareProfile, getUsableVram } from './hardware';
 import { recommendGpuLayers, recommendContextLength } from './recommendations';
 import type { ModelInfo } from './gguf';
 
@@ -289,7 +289,7 @@ export async function generateDefaultProfile(modelId: number): Promise<ProfileIn
 	if (!model) throw new Error('Model not found');
 
 	const hardware = getHardwareProfile();
-	const totalVram = hardware.gpus.reduce((sum, gpu) => sum + gpu.vram_free, 0);
+	const totalVram = getUsableVram(hardware);
 
 	// Build a minimal ModelInfo for recommendation functions
 	const modelInfo: ModelInfo = {

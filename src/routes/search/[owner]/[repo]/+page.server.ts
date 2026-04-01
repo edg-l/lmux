@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { listRepoFiles, fetchGenerationConfig } from '$lib/server/huggingface';
-import { getHardwareProfile } from '$lib/server/hardware';
+import { getHardwareProfile, getUsableVram } from '$lib/server/hardware';
 import { assessFit } from '$lib/server/recommendations';
 import type { FitLevel } from '$lib/server/recommendations';
 
@@ -13,7 +13,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		fetchGenerationConfig(repoId)
 	]);
 
-	const totalVram = hardware.gpus.reduce((sum, gpu) => sum + gpu.vram_free, 0);
+	const totalVram = getUsableVram(hardware);
 
 	const filesWithFit = files.map((file) => ({
 		...file,
