@@ -33,7 +33,8 @@ const ALLOWED_KEYS = new Set([
 	'hf_token',
 	'tools_enabled',
 	'searxng_url',
-	'kv_cache_dir'
+	'kv_cache_dir',
+	'system_prompt'
 ]);
 
 export const PUT: RequestHandler = async ({ request }) => {

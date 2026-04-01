@@ -14,7 +14,8 @@ const DEFAULTS: Record<string, string> = {
 	vram_headroom_mb: '512',
 	tools_enabled: 'true',
 	searxng_url: '',
-	kv_cache_dir: DEFAULT_KV_CACHE_DIR
+	kv_cache_dir: DEFAULT_KV_CACHE_DIR,
+	system_prompt: 'You are a helpful assistant. Current date: {{date}} ({{day}})'
 };
 
 export function getSetting(key: string): string {

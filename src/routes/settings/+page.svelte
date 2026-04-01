@@ -7,6 +7,7 @@
 	let hfTokenSource: string | null = $state(null);
 	let searxngUrl = $state('');
 	let kvCacheDir = $state('');
+	let systemPrompt = $state('');
 	let loading = $state(true);
 	let saving = $state<Record<string, boolean>>({});
 	let saved = $state<Record<string, boolean>>({});
@@ -26,6 +27,7 @@
 				hfTokenSource = settings.hf_token_source ?? null;
 				searxngUrl = settings.searxng_url ?? '';
 				kvCacheDir = settings.kv_cache_dir ?? '';
+				systemPrompt = settings.system_prompt ?? '';
 			}
 		} finally {
 			loading = false;
@@ -198,6 +200,51 @@
 						)}"
 					>
 						{saveButtonLabel('kv_cache_dir')}
+					</button>
+				</div>
+			</div>
+
+			<!-- System Prompt -->
+			<div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] p-5">
+				<h2 class="text-xs font-semibold tracking-wide text-[var(--color-text-muted)] uppercase">
+					System Prompt
+				</h2>
+				<p class="mt-1 mb-3 text-xs text-[var(--color-text-muted)]">
+					Default system prompt injected at the start of every conversation. Can be overridden per
+					model.
+				</p>
+				<textarea
+					bind:value={systemPrompt}
+					rows={5}
+					placeholder="You are a helpful assistant."
+					class="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
+				></textarea>
+				<p class="mt-1 mb-2 text-xs text-[var(--color-text-muted)]">
+					Available variables: <code class="font-mono text-[var(--color-text-secondary)]"
+						>&#123;&#123;date&#125;&#125;</code
+					>,
+					<code class="font-mono text-[var(--color-text-secondary)]"
+						>&#123;&#123;time&#125;&#125;</code
+					>,
+					<code class="font-mono text-[var(--color-text-secondary)]"
+						>&#123;&#123;day&#125;&#125;</code
+					>,
+					<code class="font-mono text-[var(--color-text-secondary)]"
+						>&#123;&#123;model&#125;&#125;</code
+					>,
+					<code class="font-mono text-[var(--color-text-secondary)]"
+						>&#123;&#123;user&#125;&#125;</code
+					>
+				</p>
+				<div class="flex justify-end">
+					<button
+						onclick={() => saveSetting('system_prompt', systemPrompt)}
+						disabled={saving['system_prompt']}
+						class="rounded-md border bg-transparent px-3 py-2 text-xs font-medium transition-colors disabled:opacity-50 {saveButtonClass(
+							'system_prompt'
+						)}"
+					>
+						{saveButtonLabel('system_prompt')}
 					</button>
 				</div>
 			</div>

@@ -4,6 +4,7 @@ import { getSetting } from '$lib/server/settings';
 import { getToolDefinitions, executeTool } from '$lib/server/tools';
 import { consumeLlamaStream } from '$lib/server/tools/llama-stream';
 import type { ToolCall } from '$lib/server/tools/llama-stream';
+import { resolveSystemPrompt } from '$lib/server/system-prompt';
 
 interface ChatMessage {
 	role: string;
@@ -38,6 +39,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			repeat_penalty?: number;
 		};
 		tools_enabled?: boolean;
+		model_id?: number | null;
 	};
 
 	if (!body.messages || !Array.isArray(body.messages)) {
@@ -50,10 +52,15 @@ export const POST: RequestHandler = async ({ request }) => {
 	const toolsEnabled = body.tools_enabled !== false && getSetting('tools_enabled') !== 'false';
 	const tools = toolsEnabled ? getToolDefinitions() : [];
 
+	const resolvedModelId = body.model_id ?? state.modelId ?? null;
+	const systemPrompt = resolveSystemPrompt(resolvedModelId);
+
 	const stream = new ReadableStream({
 		async start(controller) {
 			try {
-				const messages: ChatMessage[] = [...body.messages];
+				const messages: ChatMessage[] = systemPrompt
+					? [{ role: 'system', content: systemPrompt }, ...body.messages]
+					: [...body.messages];
 				let reachedLimit = true;
 
 				for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {

@@ -78,6 +78,8 @@
 
 	// Sampling panel state
 	let samplingOpen = $state(false);
+	let systemPromptOpen = $state(false);
+	let modelSystemPrompt: string | null = $state(null);
 	let temperature = $state(SAMPLING_DEFAULTS.temperature);
 	let top_p = $state(SAMPLING_DEFAULTS.top_p);
 	let top_k = $state(SAMPLING_DEFAULTS.top_k);
@@ -228,6 +230,15 @@
 			samplingSource = params.source;
 		} catch {
 			// defaults
+		}
+		try {
+			const spRes = await fetch(`/api/models/${modelId}/system-prompt`);
+			if (spRes.ok) {
+				const spData = await spRes.json();
+				modelSystemPrompt = spData.system_prompt;
+			}
+		} catch {
+			// ignore
 		}
 	}
 
@@ -445,7 +456,8 @@
 				body: JSON.stringify({
 					messages: chatMessages,
 					sampling: { temperature, top_p, top_k, min_p, repeat_penalty },
-					tools_enabled: toolsEnabled
+					tools_enabled: toolsEnabled,
+					model_id: serverInfo?.modelId ?? null
 				}),
 				signal: controller.signal
 			});
@@ -1010,6 +1022,29 @@
 					/>
 				</svg>
 			</button>
+
+			<button
+				onclick={() => (systemPromptOpen = !systemPromptOpen)}
+				class="rounded p-1 transition-colors {systemPromptOpen
+					? 'text-[var(--color-accent)]'
+					: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
+				aria-label="System prompt"
+				title="System prompt"
+			>
+				<svg
+					class="h-4 w-4"
+					fill="none"
+					stroke="currentColor"
+					viewBox="0 0 24 24"
+					stroke-width="1.5"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"
+					/>
+				</svg>
+			</button>
 		</div>
 
 		<!-- Sampling panel -->
@@ -1064,6 +1099,54 @@
 							</div>
 						{/each}
 					</div>
+				</div>
+			</div>
+		{/if}
+
+		<!-- System Prompt panel -->
+		{#if systemPromptOpen}
+			<div class="border-b border-[var(--color-border)] bg-[var(--color-elevated)] px-4 py-4">
+				<div class="mx-auto max-w-3xl">
+					<div class="mb-3 flex items-center justify-between">
+						<span class="text-xs font-medium tracking-wide text-[var(--color-text-muted)] uppercase"
+							>System Prompt</span
+						>
+						<div class="flex items-center gap-2">
+							<button
+								onclick={async () => {
+									if (!samplingModelId) return;
+									await fetch(`/api/models/${samplingModelId}/system-prompt`, {
+										method: 'PUT',
+										headers: { 'Content-Type': 'application/json' },
+										body: JSON.stringify({ system_prompt: null })
+									});
+									modelSystemPrompt = null;
+								}}
+								disabled={!samplingModelId}
+								class="rounded border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)] disabled:opacity-50"
+								>Reset to global</button
+							>
+							<button
+								onclick={async () => {
+									if (!samplingModelId) return;
+									await fetch(`/api/models/${samplingModelId}/system-prompt`, {
+										method: 'PUT',
+										headers: { 'Content-Type': 'application/json' },
+										body: JSON.stringify({ system_prompt: modelSystemPrompt })
+									});
+								}}
+								disabled={!samplingModelId}
+								class="rounded border border-[var(--color-accent)]/20 bg-[var(--color-accent-subtle)] px-2 py-0.5 text-xs text-[var(--color-accent)] transition-colors hover:border-[var(--color-accent)]/40 disabled:opacity-50"
+								>Save</button
+							>
+						</div>
+					</div>
+					<textarea
+						bind:value={modelSystemPrompt}
+						rows={4}
+						placeholder="Leave empty to use global default"
+						class="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
+					></textarea>
 				</div>
 			</div>
 		{/if}

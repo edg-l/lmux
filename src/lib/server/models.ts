@@ -20,6 +20,7 @@ export interface ModelRow {
 	hf_repo: string | null;
 	hf_filename: string | null;
 	created_at: string;
+	system_prompt: string | null;
 }
 
 export interface ProfileRow {
