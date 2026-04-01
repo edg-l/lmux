@@ -1959,7 +1959,7 @@
 								}
 							})()}
 							<div
-								class="ml-4 max-w-[85%] rounded-md border-l-2 border-cyan-500/30 bg-[var(--color-base)]/60"
+								class="max-w-[90%] rounded-lg border border-[var(--color-border)] border-l-2 border-l-cyan-500/40 bg-[var(--color-elevated)]"
 							>
 								<button
 									onclick={() => toggleTool(idx)}
@@ -2029,7 +2029,7 @@
 						{:else if msg.role === 'tool'}
 							{@const isExpanded = expandedTools.has(idx)}
 							<div
-								class="ml-4 max-w-[85%] rounded-md border-l-2 border-cyan-500/30 bg-[var(--color-base)]/60"
+								class="max-w-[90%] rounded-lg border border-[var(--color-border)] border-l-2 border-l-cyan-500/40 bg-[var(--color-elevated)]"
 							>
 								<button
 									onclick={() => toggleTool(idx)}
