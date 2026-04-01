@@ -31,16 +31,49 @@ function isPrivateUrl(raw: string): boolean {
 	}
 }
 
-function stripHtml(html: string): string {
+function htmlToReadableText(html: string): string {
 	let text = html;
-	// Remove script and style elements
+	// Remove script, style, nav, footer, header elements
 	text = text.replace(/<script[\s\S]*?<\/script>/gi, '');
 	text = text.replace(/<style[\s\S]*?<\/style>/gi, '');
-	// Strip all HTML tags
-	text = text.replace(/<[^>]+>/g, ' ');
-	// Collapse whitespace
-	text = text.replace(/\s+/g, ' ').trim();
-	return text;
+	text = text.replace(/<nav[\s\S]*?<\/nav>/gi, '');
+	text = text.replace(/<footer[\s\S]*?<\/footer>/gi, '');
+	// Convert links to markdown format: [text](url)
+	text = text.replace(/<a\s[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_, url, linkText) => {
+		const clean = linkText.replace(/<[^>]+>/g, '').trim();
+		if (!clean) return '';
+		// Skip anchor-only links
+		if (url.startsWith('#')) return clean;
+		return `[${clean}](${url})`;
+	});
+	// Convert headings to markdown
+	text = text.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_, level, content) => {
+		const clean = content.replace(/<[^>]+>/g, '').trim();
+		return '\n' + '#'.repeat(parseInt(level)) + ' ' + clean + '\n';
+	});
+	// Convert list items
+	text = text.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_, content) => {
+		const clean = content.replace(/<[^>]+>/g, '').trim();
+		return '- ' + clean + '\n';
+	});
+	// Convert paragraphs and divs to line breaks
+	text = text.replace(/<\/?(p|div|br|tr|section|article)[^>]*>/gi, '\n');
+	// Convert table cells
+	text = text.replace(/<\/?(td|th)[^>]*>/gi, ' | ');
+	// Strip remaining HTML tags
+	text = text.replace(/<[^>]+>/g, '');
+	// Decode common entities
+	text = text.replace(/&nbsp;/g, ' ');
+	text = text.replace(/&amp;/g, '&');
+	text = text.replace(/&lt;/g, '<');
+	text = text.replace(/&gt;/g, '>');
+	text = text.replace(/&quot;/g, '"');
+	text = text.replace(/&#39;/g, "'");
+	text = text.replace(/&#x27;/g, "'");
+	// Collapse whitespace (preserve newlines)
+	text = text.replace(/[^\S\n]+/g, ' ');
+	text = text.replace(/\n\s*\n\s*\n/g, '\n\n');
+	return text.trim();
 }
 
 async function fetchAndCache(url: string): Promise<string> {
@@ -66,7 +99,7 @@ async function fetchAndCache(url: string): Promise<string> {
 		throw new Error(`Unsupported content type: ${contentType}`);
 	}
 
-	const text = stripHtml(await res.text());
+	const text = htmlToReadableText(await res.text());
 	cache.set(url, { text, expiresAt: Date.now() + CACHE_TTL_MS });
 
 	// Evict expired entries, then oldest if over limit
