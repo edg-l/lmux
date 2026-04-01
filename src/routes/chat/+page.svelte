@@ -894,6 +894,14 @@
 		return text;
 	}
 
+	function linkifyText(text: string): string {
+		const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+		return escaped.replace(
+			/(https?:\/\/[^\s<]+)/g,
+			'<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+		);
+	}
+
 	function renderMarkdown(text: string): string {
 		const withMath = renderMath(text);
 		const html = marked.parse(withMath, { async: false }) as string;
@@ -1896,7 +1904,7 @@
 										<div
 											class="max-w-[85%] rounded-2xl rounded-br-sm bg-[var(--color-accent-dim)] px-4 py-2.5"
 										>
-											<p class="text-sm whitespace-pre-wrap text-white">{msg.content}</p>
+											<p class="user-content text-sm whitespace-pre-wrap text-white">{@html linkifyText(msg.content)}</p>
 										</div>
 										{#if msg.images && msg.images.length > 0}
 											<div class="mt-1.5 flex flex-wrap gap-2">
@@ -2334,6 +2342,16 @@
 			opacity: 1;
 			transform: scale(1);
 		}
+	}
+	:global(.user-content a) {
+		color: white;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		text-decoration-thickness: 1px;
+		opacity: 0.9;
+	}
+	:global(.user-content a:hover) {
+		opacity: 1;
 	}
 	:global(.assistant-content a) {
 		color: var(--color-accent);
