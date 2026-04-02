@@ -35,6 +35,7 @@
 		onsaveEdit: (idx: number, newContent: string) => Promise<void>;
 		disabled: boolean;
 		placeholder: string;
+		hasAttachments?: boolean;
 	}
 
 	let {
@@ -57,7 +58,8 @@
 		ondismisssandbox,
 		onsaveEdit,
 		disabled,
-		placeholder
+		placeholder,
+		hasAttachments = false
 	}: Props = $props();
 
 	// Internal state
@@ -683,7 +685,7 @@
 		{:else}
 			<button
 				onclick={onsend}
-				disabled={!input.trim() || disabled}
+				disabled={(!input.trim() && !hasAttachments) || disabled}
 				class="shrink-0 self-end rounded-lg bg-[var(--color-accent-dim)] px-4 py-2.5 text-xs font-medium text-white transition-colors hover:bg-[var(--color-accent)] disabled:opacity-30"
 				>Send</button
 			>

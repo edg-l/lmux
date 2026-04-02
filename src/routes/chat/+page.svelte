@@ -1460,6 +1460,7 @@
 				: serverInfo?.status === 'starting'
 					? 'Loading model...'
 					: 'Load a model first...'}
+			hasAttachments={pendingImages.length > 0}
 			onsend={sendMessage}
 			onstop={stopGeneration}
 			onsaveEdit={handleSaveEdit}
