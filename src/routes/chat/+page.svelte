@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import ChatPanel from '$lib/components/ChatPanel.svelte';
+	import ChatSidebar from '$lib/components/ChatSidebar.svelte';
+	import SamplingPanel from '$lib/components/SamplingPanel.svelte';
+	import SystemPromptPanel from '$lib/components/SystemPromptPanel.svelte';
 	import type { Message } from '$lib/types/chat';
 	import { processSSEStream } from '$lib/utils/stream';
 	import {
@@ -575,17 +578,6 @@
 		abortController?.abort();
 	}
 
-	function formatTime(dateStr: string): string {
-		const d = new Date(dateStr);
-		const now = new Date();
-		const mins = Math.floor((now.getTime() - d.getTime()) / 60000);
-		if (mins < 1) return 'now';
-		if (mins < 60) return `${mins}m`;
-		const hrs = Math.floor(mins / 60);
-		if (hrs < 24) return `${hrs}h`;
-		return `${Math.floor(hrs / 24)}d`;
-	}
-
 	let activeConversation = $derived(
 		conversations.find((c) => c.id === activeConversationId) ?? null
 	);
@@ -819,191 +811,26 @@
 
 <div class="-m-5 flex h-screen md:-m-8">
 	<!-- Conversation sidebar -->
-	<div
-		class="flex w-56 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-elevated)] {sidebarOpen
-			? ''
-			: 'hidden'}"
-	>
-		<div
-			class="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2.5"
-		>
-			<span class="text-xs font-medium text-[var(--color-text-muted)]">Conversations</span>
-			<button
-				onclick={newConversation}
-				class="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-0.5 text-xs text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-accent)]/30 hover:text-[var(--color-accent)]"
-				>New</button
-			>
-		</div>
-
-		<div class="px-2 py-1.5">
-			<input
-				type="text"
-				bind:value={searchQuery}
-				placeholder="Search..."
-				class="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
-			/>
-		</div>
-
-		{#if allTags.length > 0}
-			<div class="flex flex-wrap gap-1 border-b border-[var(--color-border)] px-2 py-1.5">
-				{#each allTags as tag}
-					<button
-						onclick={() => (activeTag = activeTag === tag ? null : tag)}
-						class="rounded-full px-2 py-0.5 text-xs transition-colors {activeTag === tag
-							? 'bg-[var(--color-accent)] text-white'
-							: 'bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
-					>
-						{tag}
-					</button>
-				{/each}
-			</div>
-		{/if}
-
-		<div class="flex-1 overflow-y-auto">
-			{#each filteredConversations as conv}
-				<div
-					class="group flex items-center border-b border-[var(--color-border)]/30 {activeConversationId ===
-					conv.id
-						? 'border-l-2 border-l-[var(--color-accent)] bg-[var(--color-accent-subtle)]'
-						: 'hover:bg-[var(--color-surface)]'}"
-				>
-					<button
-						onclick={() => selectConversation(conv.id)}
-						class="min-w-0 flex-1 px-3 py-2 text-left"
-					>
-						<p
-							class="truncate text-xs font-medium {activeConversationId === conv.id
-								? 'text-[var(--color-accent)]'
-								: 'text-[var(--color-text-primary)]'}"
-						>
-							{conv.title || 'Untitled'}
-						</p>
-						<div class="mt-0.5 flex items-center gap-1.5">
-							{#if conv.model_name}
-								<span
-									class="inline-flex items-center gap-1 truncate font-mono text-[10px] text-[var(--color-accent)]/60"
-								>
-									<svg
-										class="h-2.5 w-2.5 shrink-0"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-										stroke-width="1.5"
-									>
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25z"
-										/>
-									</svg>
-									{conv.model_name}
-								</span>
-							{:else if conv.model_id !== null && !conv.model_name}
-								<span class="text-[10px] text-red-400/60">Model removed</span>
-							{/if}
-							<span class="font-mono text-[10px] text-[var(--color-text-muted)]">
-								{formatTime(conv.updated_at)}
-							</span>
-						</div>
-						{#if conv.tags}
-							<div class="mt-0.5 flex flex-wrap gap-0.5">
-								{#each conv.tags
-									.split(',')
-									.map((t) => t.trim())
-									.filter(Boolean) as tag}
-									<span
-										class="rounded-full bg-[var(--color-accent)]/15 px-1.5 py-0 text-[10px] text-[var(--color-accent)]"
-										>{tag}</span
-									>
-								{/each}
-							</div>
-						{/if}
-					</button>
-					{#if editingTagsConvId === conv.id}
-						<div class="mr-2 flex items-center">
-							<input
-								type="text"
-								bind:value={tagInput}
-								onblur={finishEditingTags}
-								onkeydown={(e) => {
-									if (e.key === 'Enter') finishEditingTags();
-								}}
-								placeholder="tag1, tag2"
-								class="w-20 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1 py-0.5 text-[10px] text-[var(--color-text-secondary)] focus:border-[var(--color-accent)] focus:outline-none"
-							/>
-						</div>
-					{:else if confirmDeleteId === conv.id}
-						<button
-							onclick={() => deleteConversation(conv.id)}
-							class="mr-1 px-1.5 py-0.5 text-xs text-red-400">Yes</button
-						>
-						<button
-							onclick={() => (confirmDeleteId = null)}
-							class="mr-2 text-xs text-[var(--color-text-muted)]">No</button
-						>
-					{:else}
-						<div class="mr-2 flex items-center gap-1 opacity-0 group-hover:opacity-100">
-							<button
-								onclick={(e) => {
-									e.stopPropagation();
-									startEditingTags(conv);
-								}}
-								class="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
-								title="Edit tags"
-							>
-								<svg
-									class="h-3 w-3"
-									fill="none"
-									stroke="currentColor"
-									viewBox="0 0 24 24"
-									stroke-width="1.5"
-								>
-									<path
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z"
-									/>
-									<path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6z" />
-								</svg>
-							</button>
-							<button
-								onclick={() => (confirmDeleteId = conv.id)}
-								class="text-xs text-[var(--color-text-muted)] hover:text-red-400">Del</button
-							>
-						</div>
-					{/if}
-				</div>
-			{/each}
-			{#if filteredConversations.length === 0}
-				<p class="px-3 py-6 text-center text-xs text-[var(--color-text-muted)]">
-					{searchQuery.trim() ? 'No matches' : 'No conversations'}
-				</p>
-			{/if}
-		</div>
-
-		<!-- Server status bar -->
-		<div class="border-t border-[var(--color-border)] px-3 py-2">
-			{#if serverInfo?.status === 'ready' && serverInfo.modelName}
-				<div class="flex items-center gap-2">
-					<span class="h-2 w-2 shrink-0 rounded-full bg-emerald-400"></span>
-					<span
-						class="truncate font-mono text-xs text-[var(--color-text-secondary)]"
-						title={serverInfo.modelName}>{serverInfo.modelName}</span
-					>
-				</div>
-			{:else if serverInfo?.status === 'starting'}
-				<div class="flex items-center gap-2">
-					<span class="h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-400"></span>
-					<span class="text-xs text-amber-400">Loading model...</span>
-				</div>
-			{:else}
-				<div class="flex items-center gap-2 rounded-md bg-red-500/10 px-2 py-1">
-					<span class="h-2 w-2 shrink-0 rounded-full bg-red-400"></span>
-					<span class="text-xs font-medium text-red-400">Server stopped</span>
-				</div>
-			{/if}
-		</div>
-	</div>
+	{#if sidebarOpen}
+		<ChatSidebar
+			{filteredConversations}
+			{activeConversationId}
+			bind:searchQuery
+			{allTags}
+			bind:activeTag
+			bind:editingTagsConvId
+			bind:tagInput
+			bind:confirmDeleteId
+			{serverInfo}
+			onNewConversation={newConversation}
+			onSelectConversation={selectConversation}
+			onDeleteConversation={deleteConversation}
+			onStartEditingTags={startEditingTags}
+			onFinishEditingTags={finishEditingTags}
+			onSetActiveTag={(tag) => (activeTag = tag)}
+			onSetConfirmDeleteId={(id) => (confirmDeleteId = id)}
+		/>
+	{/if}
 
 	<!-- Chat area -->
 	<div class="flex min-w-0 flex-1 flex-col">
@@ -1247,194 +1074,33 @@
 
 		<!-- Sampling panel -->
 		{#if samplingOpen}
-			<div class="border-b border-[var(--color-border)] bg-[var(--color-elevated)] px-4 py-4">
-				<div class="mx-auto max-w-3xl">
-					<div class="mb-4 flex items-center justify-between">
-						<span class="text-xs font-medium tracking-wide text-[var(--color-text-muted)] uppercase"
-							>Sampling</span
-						>
-						<div class="flex items-center gap-2">
-							<span
-								class="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-0.5 font-mono text-xs text-[var(--color-text-muted)]"
-								>{samplingSource}</span
-							>
-							<button
-								onclick={fetchRecommendedSampling}
-								disabled={fetchingRecommended || !samplingModelId}
-								class="rounded border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)] disabled:opacity-50"
-								>{fetchingRecommended ? 'Fetching...' : 'Fetch recommended'}</button
-							>
-							<button
-								onclick={resetSampling}
-								class="rounded border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
-								>Reset</button
-							>
-							<button
-								onclick={saveSamplingDefaults}
-								class="rounded border border-[var(--color-accent)]/20 bg-[var(--color-accent-subtle)] px-2 py-0.5 text-xs text-[var(--color-accent)] transition-colors hover:border-[var(--color-accent)]/40"
-								>Save</button
-							>
-							<span class="mx-1 text-[var(--color-border)]">|</span>
-							<div class="relative">
-								<button
-									onclick={() => (presetDropdownOpen = !presetDropdownOpen)}
-									class="rounded border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
-									>Presets</button
-								>
-								{#if presetDropdownOpen}
-									<div
-										class="absolute right-0 z-20 mt-1 w-48 rounded-md border border-[var(--color-border)] bg-[var(--color-elevated)] py-1 shadow-lg"
-									>
-										{#if presets.length === 0}
-											<p class="px-3 py-2 text-xs text-[var(--color-text-muted)]">No presets</p>
-										{:else}
-											{#each presets as preset}
-												<div
-													class="group/preset flex items-center justify-between px-3 py-1.5 hover:bg-[var(--color-surface)]"
-												>
-													<button
-														onclick={() => applyPreset(preset)}
-														class="flex-1 text-left text-xs text-[var(--color-text-secondary)]"
-														>{preset.name}</button
-													>
-													<button
-														onclick={() => deletePresetById(preset.id)}
-														class="text-xs text-[var(--color-text-muted)] opacity-0 group-hover/preset:opacity-100 hover:text-red-400"
-														>x</button
-													>
-												</div>
-											{/each}
-										{/if}
-										<div class="border-t border-[var(--color-border)] px-3 pt-1.5 pb-1">
-											{#if savePresetOpen}
-												<div class="flex gap-1">
-													<input
-														type="text"
-														bind:value={savePresetName}
-														placeholder="Preset name"
-														onkeydown={(e) => {
-															if (e.key === 'Enter') saveAsPreset();
-														}}
-														class="flex-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-xs text-[var(--color-text-secondary)] focus:border-[var(--color-accent)] focus:outline-none"
-													/>
-													<button
-														onclick={saveAsPreset}
-														class="rounded bg-[var(--color-accent-dim)] px-2 py-0.5 text-xs text-white hover:bg-[var(--color-accent)]"
-														>OK</button
-													>
-												</div>
-											{:else}
-												<button
-													onclick={() => (savePresetOpen = true)}
-													class="w-full text-left text-xs text-[var(--color-accent)] hover:underline"
-													>Save as Preset</button
-												>
-											{/if}
-										</div>
-									</div>
-								{/if}
-							</div>
-						</div>
-					</div>
-					<div class="grid grid-cols-5 gap-4">
-						{#each [{ label: 'Temperature', value: temperature, min: 0, max: 2, step: 0.05, fmt: (v: number) => v.toFixed(2), set: (v: number) => (temperature = v) }, { label: 'Top P', value: top_p, min: 0, max: 1, step: 0.05, fmt: (v: number) => v.toFixed(2), set: (v: number) => (top_p = v) }, { label: 'Top K', value: top_k, min: 0, max: 200, step: 1, fmt: (v: number) => String(v), set: (v: number) => (top_k = v) }, { label: 'Min P', value: min_p, min: 0, max: 1, step: 0.01, fmt: (v: number) => v.toFixed(2), set: (v: number) => (min_p = v) }, { label: 'Repeat', value: repeat_penalty, min: 0.5, max: 2, step: 0.05, fmt: (v: number) => v.toFixed(2), set: (v: number) => (repeat_penalty = v) }] as param}
-							<div>
-								<div class="mb-2 flex items-baseline justify-between">
-									<span class="text-xs text-[var(--color-text-muted)]">{param.label}</span>
-									<span class="font-mono text-xs font-medium text-[var(--color-text-primary)]"
-										>{param.fmt(param.value)}</span
-									>
-								</div>
-								<input
-									type="range"
-									value={param.value}
-									oninput={(e) => param.set(parseFloat(e.currentTarget.value))}
-									min={param.min}
-									max={param.max}
-									step={param.step}
-									class="sampling-range w-full"
-								/>
-							</div>
-						{/each}
-					</div>
-					<!-- Thinking Budget -->
-					<div class="mt-4 border-t border-[var(--color-border)] pt-4">
-						<div class="flex items-center gap-3">
-							<label class="flex items-center gap-2">
-								<input
-									type="checkbox"
-									bind:checked={thinkingBudgetEnabled}
-									class="accent-[var(--color-accent)]"
-								/>
-								<span class="text-xs text-[var(--color-text-muted)]">Thinking Budget</span>
-							</label>
-							{#if thinkingBudgetEnabled}
-								<span class="font-mono text-xs font-medium text-[var(--color-text-primary)]"
-									>{thinkingBudgetValue.toLocaleString()}</span
-								>
-								<input
-									type="range"
-									bind:value={thinkingBudgetValue}
-									min={0}
-									max={32768}
-									step={256}
-									class="sampling-range flex-1"
-								/>
-							{:else}
-								<span class="text-xs text-[var(--color-text-muted)]">Unlimited</span>
-							{/if}
-						</div>
-					</div>
-				</div>
-			</div>
+			<SamplingPanel
+				bind:temperature
+				bind:top_p
+				bind:top_k
+				bind:min_p
+				bind:repeat_penalty
+				{samplingSource}
+				{samplingModelId}
+				{fetchingRecommended}
+				bind:thinkingBudgetEnabled
+				bind:thinkingBudgetValue
+				{presets}
+				bind:presetDropdownOpen
+				bind:savePresetOpen
+				bind:savePresetName
+				onFetchRecommended={fetchRecommendedSampling}
+				onReset={resetSampling}
+				onSave={saveSamplingDefaults}
+				onApplyPreset={applyPreset}
+				onDeletePreset={deletePresetById}
+				onSaveAsPreset={saveAsPreset}
+			/>
 		{/if}
 
 		<!-- System Prompt panel -->
 		{#if systemPromptOpen}
-			<div class="border-b border-[var(--color-border)] bg-[var(--color-elevated)] px-4 py-4">
-				<div class="mx-auto max-w-3xl">
-					<div class="mb-3 flex items-center justify-between">
-						<span class="text-xs font-medium tracking-wide text-[var(--color-text-muted)] uppercase"
-							>System Prompt</span
-						>
-						<div class="flex items-center gap-2">
-							<button
-								onclick={async () => {
-									if (!samplingModelId) return;
-									await fetch(`/api/models/${samplingModelId}/system-prompt`, {
-										method: 'PUT',
-										headers: { 'Content-Type': 'application/json' },
-										body: JSON.stringify({ system_prompt: null })
-									});
-									modelSystemPrompt = null;
-								}}
-								disabled={!samplingModelId}
-								class="rounded border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)] disabled:opacity-50"
-								>Reset to global</button
-							>
-							<button
-								onclick={async () => {
-									if (!samplingModelId) return;
-									await fetch(`/api/models/${samplingModelId}/system-prompt`, {
-										method: 'PUT',
-										headers: { 'Content-Type': 'application/json' },
-										body: JSON.stringify({ system_prompt: modelSystemPrompt })
-									});
-								}}
-								disabled={!samplingModelId}
-								class="rounded border border-[var(--color-accent)]/20 bg-[var(--color-accent-subtle)] px-2 py-0.5 text-xs text-[var(--color-accent)] transition-colors hover:border-[var(--color-accent)]/40 disabled:opacity-50"
-								>Save</button
-							>
-						</div>
-					</div>
-					<textarea
-						bind:value={modelSystemPrompt}
-						rows={4}
-						placeholder="Leave empty to use global default"
-						class="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
-					></textarea>
-				</div>
-			</div>
+			<SystemPromptPanel bind:modelSystemPrompt {samplingModelId} />
 		{/if}
 
 		<ChatPanel
@@ -1579,36 +1245,3 @@
 		</ChatPanel>
 	</div>
 </div>
-
-<style>
-	.sampling-range {
-		-webkit-appearance: none;
-		appearance: none;
-		height: 4px;
-		border-radius: 2px;
-		background: var(--color-surface);
-		outline: none;
-	}
-	.sampling-range::-webkit-slider-thumb {
-		-webkit-appearance: none;
-		appearance: none;
-		width: 12px;
-		height: 12px;
-		border-radius: 50%;
-		background: var(--color-accent);
-		cursor: pointer;
-	}
-	.sampling-range::-moz-range-thumb {
-		width: 12px;
-		height: 12px;
-		border-radius: 50%;
-		background: var(--color-accent);
-		cursor: pointer;
-		border: none;
-	}
-	.sampling-range::-moz-range-track {
-		height: 4px;
-		border-radius: 2px;
-		background: var(--color-surface);
-	}
-</style>
