@@ -9,6 +9,7 @@
 		linkifyText,
 		getToolSummary,
 		getToolLabel,
+		getToolElapsed,
 		highlightDangers
 	} from '$lib/utils/chat';
 
@@ -346,6 +347,9 @@
 									>{toolSummary}</span
 								>
 							{/if}
+							{#if msg.toolStatus === 'done' && getToolElapsed(msg.content)}
+								<span class="shrink-0 font-mono text-[10px] text-[var(--color-text-muted)]">{getToolElapsed(msg.content)}</span>
+							{/if}
 							{#if msg.toolStatus === 'running'}
 								<span class="h-2 w-2 shrink-0 animate-pulse rounded-full bg-cyan-400"></span>
 							{:else if msg.toolError}
@@ -468,6 +472,9 @@
 								<span class="min-w-0 truncate text-xs text-[var(--color-text-muted)]"
 									>{toolSummary}</span
 								>
+							{/if}
+							{#if getToolElapsed(msg.content)}
+								<span class="shrink-0 font-mono text-[10px] text-[var(--color-text-muted)]">{getToolElapsed(msg.content)}</span>
 							{/if}
 							{#if msg.toolError}
 								<svg

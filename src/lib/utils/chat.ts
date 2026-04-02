@@ -81,6 +81,12 @@ export function getToolLabel(toolName: string | undefined): string {
 	return TOOL_LABELS[toolName] ?? toolName;
 }
 
+export function getToolElapsed(content: string | undefined): string | null {
+	if (!content) return null;
+	const match = content.match(/\[exit \d+, ([^\]]+)\]\s*$/);
+	return match ? match[1] : null;
+}
+
 export function getToolSummary(toolName: string | undefined, toolArgs: string | undefined): string {
 	try {
 		const args = JSON.parse(toolArgs ?? '{}');
