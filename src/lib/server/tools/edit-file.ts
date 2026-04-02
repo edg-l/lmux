@@ -18,6 +18,21 @@ function generateDiffSnippet(oldStr: string, newStr: string, lineNumber: number)
 		}
 	}
 
+	// Strip common leading whitespace from content (after the +/- prefix)
+	const contentLines = diffLines.slice(1); // skip @@ header
+	let minIndent = Infinity;
+	for (const line of contentLines) {
+		const content = line.slice(2); // skip prefix like "+ " or "  "
+		if (content.trim().length === 0) continue;
+		const indent = content.match(/^ */)?.[0].length ?? 0;
+		minIndent = Math.min(minIndent, indent);
+	}
+	if (minIndent > 0 && minIndent < Infinity) {
+		for (let i = 1; i < diffLines.length; i++) {
+			diffLines[i] = diffLines[i].slice(0, 2) + diffLines[i].slice(2 + minIndent);
+		}
+	}
+
 	// Truncate if too long
 	const maxLines = 16;
 	if (diffLines.length > maxLines) {
