@@ -25,6 +25,7 @@ export interface StreamCallbacks {
 	onFileChanged?: (data: { path: string; operation: string }) => void;
 	onPlanDelta?: (content: string) => void;
 	onPlanDone?: (content: string) => void;
+	onRetrievalStatus?: (status: string) => void;
 	onError?: (error: string) => void;
 	getMessageCount: () => number;
 }
@@ -101,6 +102,8 @@ export async function processSSEStream(
 						paths: parsed.paths ?? [],
 						absolutePaths: parsed.absolutePaths ?? []
 					});
+				} else if (parsed.type === 'retrieval_status' && callbacks.onRetrievalStatus) {
+					callbacks.onRetrievalStatus(parsed.status);
 				} else if (parsed.type === 'plan_delta' && callbacks.onPlanDelta) {
 					callbacks.onPlanDelta(parsed.content);
 				} else if (parsed.type === 'plan_done' && callbacks.onPlanDone) {

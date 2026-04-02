@@ -59,6 +59,7 @@
 	// Planning state
 	let planEnabled = $state(false);
 	let planText = $state('');
+	let retrievalStatus = $state<string | null>(null);
 
 	// Reasoning budget state
 	let thinkingBudgetEnabled = $state(false);
@@ -171,6 +172,7 @@
 	async function selectConversation(id: number) {
 		activeConversationId = id;
 		planText = '';
+		retrievalStatus = null;
 		changedFiles = new Map();
 		activeTab = 'chat';
 		try {
@@ -322,6 +324,7 @@
 		messages = [...messages, { role: 'assistant', content: '' }];
 
 		planText = '';
+		retrievalStatus = null;
 		streaming = true;
 		const controller = new AbortController();
 		abortController = controller;
@@ -441,6 +444,23 @@
 							}
 						}
 					];
+				},
+				onRetrievalStatus: (status) => {
+					retrievalStatus = status === 'done' ? null : status;
+					// Show status in the assistant message while searching
+					if (status === 'searching') {
+						messages = messages.map((m, i) =>
+							i === messages.length - 1 && m.role === 'assistant'
+								? { ...m, content: '*Searching codebase for relevant context...*' }
+								: m
+						);
+					} else if (status === 'done') {
+						messages = messages.map((m, i) =>
+							i === messages.length - 1 && m.role === 'assistant'
+								? { ...m, content: '' }
+								: m
+						);
+					}
 				},
 				onPlanDelta: (content) => {
 					planText += content;

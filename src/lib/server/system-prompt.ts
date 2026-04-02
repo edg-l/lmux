@@ -16,6 +16,18 @@ const AVAILABLE_TOOLS = [
 	'stop_process'
 ];
 
+export const RETRIEVAL_SYSTEM_PROMPT = `You are a search assistant. Given a user request about a coding project, output 3-5 search terms (one per line) that would find the most relevant source files. Output ONLY the search terms, one per line. No numbering, no explanation.
+
+Focus on: function names, file names, module names, API routes, class names, or distinctive strings that would appear in the relevant code.`;
+
+export function parseSearchTerms(response: string): string[] {
+	return response
+		.split('\n')
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0 && line.length < 100)
+		.slice(0, 5);
+}
+
 export const PLANNING_SYSTEM_PROMPT = `You are a planning assistant. Given a user request and a coding project, produce ONLY a numbered step-by-step plan. Do NOT write code or produce any output besides the plan.
 
 Rules:

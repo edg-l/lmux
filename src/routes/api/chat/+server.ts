@@ -7,8 +7,13 @@ import type { ToolCall } from '$lib/server/tools/llama-stream';
 import {
 	resolveSystemPrompt,
 	PLANNING_SYSTEM_PROMPT,
-	buildPlanInjectedPrompt
+	RETRIEVAL_SYSTEM_PROMPT,
+	buildPlanInjectedPrompt,
+	parseSearchTerms
 } from '$lib/server/system-prompt';
+import { searchProjectFiles } from '$lib/server/tools/search-files';
+import { listProjectDirectory } from '$lib/server/tools/list-directory';
+import { readProjectFile } from '$lib/server/tools/read-file';
 import {
 	requestApproval,
 	cleanupApproval,
@@ -91,8 +96,109 @@ export const POST: RequestHandler = async ({ request }) => {
 
 				// Planning pass: when plan_enabled and project_id, generate a plan first
 				if (body.plan_enabled && body.project_id) {
+					// Pass 0: Retrieval - get codebase context for the planning prompt
+					controller.enqueue(
+						new TextEncoder().encode(
+							sseEvent(JSON.stringify({ type: 'retrieval_status', status: 'searching' }))
+						)
+					);
+					let retrievalContext = '';
+					try {
+						// Get project directory tree
+						const tree = await listProjectDirectory({ depth: 3 }, project!.path);
+						retrievalContext += `## Project Structure\n${tree}\n\n`;
+
+						// Ask the model for search terms
+						const retrievalMessages: ChatMessage[] = [
+							{ role: 'system', content: RETRIEVAL_SYSTEM_PROMPT },
+							...normalized
+						];
+
+						const retrievalRes = await fetch(
+							`http://localhost:${state.port}/v1/chat/completions`,
+							{
+								method: 'POST',
+								headers: { 'Content-Type': 'application/json' },
+								body: JSON.stringify({
+									messages: retrievalMessages,
+									stream: true,
+									stream_options: { include_usage: true },
+									...(body.sampling && {
+										temperature: body.sampling.temperature,
+										top_p: body.sampling.top_p,
+										top_k: body.sampling.top_k,
+										min_p: body.sampling.min_p,
+										repeat_penalty: body.sampling.repeat_penalty
+									})
+								})
+							}
+						);
+
+						if (retrievalRes.ok && retrievalRes.body) {
+							const retrievalResult = await consumeLlamaStream(retrievalRes.body);
+							const searchTerms = parseSearchTerms(retrievalResult.content);
+
+							if (searchTerms.length > 0) {
+								// Search for each term and collect unique file paths
+								const seenFiles = new Set<string>();
+								const snippets: string[] = [];
+
+								for (const term of searchTerms) {
+									const results = await searchProjectFiles(
+										{ pattern: term },
+										project!.path
+									);
+									if (results === 'No matches found.') continue;
+
+									// Extract unique file paths from rg output (path:line:content)
+									for (const line of results.split('\n')) {
+										const match = line.match(/^([^:]+):\d+:/);
+										if (match && !seenFiles.has(match[1])) {
+											seenFiles.add(match[1]);
+										}
+									}
+								}
+
+								// Read first 50 lines of up to 5 relevant files
+								const filesToRead = [...seenFiles].slice(0, 5);
+								for (const filePath of filesToRead) {
+									// Convert absolute path to relative
+									const relPath = filePath.startsWith(project!.path)
+										? filePath.slice(project!.path.length + 1)
+										: filePath;
+									const content = await readProjectFile(
+										{ path: relPath, limit: 50 },
+										project!.path
+									);
+									if (!content.startsWith('File not found')) {
+										snippets.push(`### ${relPath}\n\`\`\`\n${content}\n\`\`\``);
+									}
+								}
+
+								if (snippets.length > 0) {
+									retrievalContext += `## Relevant Files\n${snippets.join('\n\n')}\n`;
+								}
+							}
+						}
+					} catch {
+						// Retrieval is best-effort, continue without it
+					}
+
+					controller.enqueue(
+						new TextEncoder().encode(
+							sseEvent(
+								JSON.stringify({ type: 'retrieval_status', status: 'done' })
+							)
+						)
+					);
+
+					// Build planning prompt with retrieval context
+					const planningPrompt = retrievalContext
+						? `${PLANNING_SYSTEM_PROMPT}\n\n## Codebase Context\n${retrievalContext}`
+						: PLANNING_SYSTEM_PROMPT;
+
 					const planMessages: ChatMessage[] = [
-						{ role: 'system', content: PLANNING_SYSTEM_PROMPT },
+						{ role: 'system', content: planningPrompt },
 						...normalized
 					];
 
