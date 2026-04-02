@@ -196,6 +196,23 @@
 		activeTab = 'chat';
 	}
 
+	async function deleteConversation(id: number) {
+		try {
+			await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+			if (activeConversationId === id) {
+				activeConversationId = null;
+				messages = [];
+				input = '';
+				planText = '';
+				retrievalStatus = null;
+				tokenUsage = null;
+			}
+			sessionListComponent?.loadConversations();
+		} catch {
+			// ignore
+		}
+	}
+
 	async function ensureConversation(): Promise<number> {
 		if (activeConversationId) return activeConversationId;
 
@@ -674,7 +691,7 @@
 
 				<!-- Sessions -->
 				<div
-					class="flex max-h-[40%] shrink-0 flex-col border-t border-[var(--color-border)] px-1 py-2"
+					class="flex max-h-[40%] min-h-0 shrink-0 flex-col overflow-hidden border-t border-[var(--color-border)] px-1 py-2"
 				>
 					<SessionList
 						bind:this={sessionListComponent}
@@ -683,6 +700,7 @@
 						modelId={serverInfo?.modelId ?? null}
 						onSelect={selectConversation}
 						onNew={newConversation}
+						onDelete={deleteConversation}
 					/>
 				</div>
 			</div>

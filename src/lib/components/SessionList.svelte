@@ -15,9 +15,10 @@
 		modelId: number | null;
 		onSelect: (id: number) => void;
 		onNew: () => void;
+		onDelete?: (id: number) => void;
 	}
 
-	let { projectId, activeConversationId, modelId, onSelect, onNew }: Props = $props();
+	let { projectId, activeConversationId, modelId, onSelect, onNew, onDelete }: Props = $props();
 
 	let conversations = $state<Conversation[]>([]);
 
@@ -52,20 +53,38 @@
 	</div>
 	<div class="flex-1 overflow-y-auto">
 		{#each conversations as conv (conv.id)}
-			<button
-				onclick={() => onSelect(conv.id)}
-				class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors
+			<div
+				class="group flex items-center rounded transition-colors
 					{activeConversationId === conv.id
-					? 'border-l-2 border-l-[var(--color-accent)] bg-[var(--color-accent-subtle)] text-[var(--color-text-primary)]'
-					: 'border-l-2 border-l-transparent text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'}"
+					? 'border-l-2 border-l-[var(--color-accent)] bg-[var(--color-accent-subtle)]'
+					: 'border-l-2 border-l-transparent hover:bg-[var(--color-surface-hover)]'}"
 			>
-				<span class="min-w-0 flex-1 truncate text-xs">
-					{conv.title || 'New Chat'}
-				</span>
-				<span class="shrink-0 text-xs text-[var(--color-text-muted)]">
-					{formatTime(conv.updated_at)}
-				</span>
-			</button>
+				<button
+					onclick={() => onSelect(conv.id)}
+					class="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left
+						{activeConversationId === conv.id
+						? 'text-[var(--color-text-primary)]'
+						: 'text-[var(--color-text-secondary)]'}"
+				>
+					<span class="min-w-0 flex-1 truncate text-xs">
+						{conv.title || 'New Chat'}
+					</span>
+					<span class="shrink-0 text-xs text-[var(--color-text-muted)]">
+						{formatTime(conv.updated_at)}
+					</span>
+				</button>
+				{#if onDelete}
+					<button
+						onclick={(e) => { e.stopPropagation(); onDelete(conv.id); }}
+						class="shrink-0 px-1.5 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+						title="Delete session"
+					>
+						<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				{/if}
+			</div>
 		{/each}
 		{#if conversations.length === 0}
 			<p class="px-2 py-4 text-center text-xs text-[var(--color-text-muted)]">No sessions</p>
