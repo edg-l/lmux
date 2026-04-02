@@ -6,31 +6,31 @@ Built with SvelteKit, Bun, and SQLite.
 
 ## Features
 
-- **Model Library** -- Scan local GGUF files and HuggingFace cache, parse metadata (architecture, params, quant type, context length), display in a browsable grid
-- **HuggingFace Integration** -- Search models, browse trending, inspect repo files with VRAM fit indicators, download with progress/resume/cancel, fetch recommended sampling parameters from `generation_config.json`
-- **Hardware Detection** -- NVIDIA (nvidia-smi), AMD (rocm-smi), CPU, RAM, and disk. Used to auto-generate launch profiles
-- **VRAM Recommendations** -- Estimates VRAM for model weights + KV cache, including hybrid SSM/attention models (Qwen3.5, etc.). Layers-first allocation strategy (maximize GPU layers, then fit context into remaining VRAM)
-- **Launch Profiles** -- Per-model saved configurations: GPU layers, context size, threads, batch size, flash attention, KV cache type, port, extra flags
-- **Server Management** -- Spawn/stop llama-server, health polling, log viewer, one-server-at-a-time with mutex serialization
-- **Chat-Model Coupling** -- Conversations are tied to specific models. Model selector for new chats, "Launch model" button when the conversation's model isn't running, stop-and-switch flow
-- **Chat** -- SSE streaming, markdown rendering with KaTeX math support, `<think>` block collapsing, conversation CRUD, adjustable sampling parameters per model, multi-turn editing (edit and regenerate from any point)
-- **Image/Vision** -- Upload images in chat for multimodal models. Configure mmproj path per launch profile. Inline image thumbnails in messages
-- **Tool Calling** -- Built-in `web_search` (via SearXNG) and `fetch_url` tools with SSRF protection. Collapsible tool status cards with friendly labels and elapsed time. Configurable per-session
-- **Coding Agent** -- Project mode with 9 coding tools: `read_file`, `write_file`, `edit_file`, `insert_lines`, `list_directory`, `search_files`, `run_command`, `start_process`, `stop_process`. Landlock-sandboxed command execution with command approval flow and "Always Allow". AGENTS.md support for per-project instructions
-- **Self-Planning Pipeline** -- Three-pass plan-then-execute architecture inspired by Self-Planning (arXiv:2303.06689) and BRAID (arXiv:2512.15959). Pass 0: RAG retrieval (directory tree + model-generated search terms + file snippets). Pass 1: generate a step-by-step plan with no tools. Pass 2: execute with tools using the plan as guidance. Visible collapsible plan block in chat. Skips re-planning on continuations
-- **Background Processes** -- `start_process` for long-running commands (dev servers, watchers) with `wait_for` string matching, configurable timeout, and auto-kill at 30 minutes. Process list in workspace sidebar with kill buttons. `run_command` rejects trailing `&` with guidance to use `start_process`
-- **Verify-and-Repair Loop** -- Coding prompt instructs the model to always run build/tests after changes, read errors, fix, and re-run until passing. Auto-retry on empty responses with "Continue with the next step"
-- **Workspace UI** -- Project file tree, file preview with syntax highlighting and git diff view, session list with delete. Right control panel (wide screens) with Plan toggle, Reasoning toggle, running processes, and sampling sliders with Qwen3.5-optimized coding defaults (temp 0.6, top_k 20, repeat_penalty 1.0)
-- **System Prompts** -- Global default with per-model overrides. Template variables (`{{date}}`, `{{time}}`, `{{day}}`, `{{model}}`, `{{user}}`) expanded at send time
-- **Prompt Presets** -- Save and load sampling + system prompt combos (e.g. "Creative writing", "Code assistant")
-- **Reasoning Budget** -- Control max thinking tokens for models that support reasoning/thinking. On by default (32K) in workspace, auto-disabled for small contexts
-- **Conversation Organization** -- Search/filter, taggable conversations with sidebar filter pills
-- **Model Comparison** -- Side-by-side read-only view of two conversations
-- **Server Logs** -- Collapsible terminal panel showing llama-server stderr output in real-time
-- **Export** -- Download conversations as markdown or JSON
-- **Keyboard Shortcuts** -- Ctrl+N new chat, Ctrl+Shift+S stop server, Escape cancel generation
-- **KV Cache Persistence** -- Optional `--slot-save-path` support for resuming conversations without re-processing the prompt. Defaults to `~/.cache/lmux/kv`
-- **Settings** -- Models directory, llama-server path (auto-detect), HuggingFace token, VRAM headroom, SearXNG URL, KV cache directory, global system prompt
+### Zero-Config Model Setup
+
+Scan your local GGUF files, detect your hardware (NVIDIA/AMD/CPU), and auto-generate optimized launch profiles. lmux estimates VRAM for weights + KV cache (including hybrid SSM/attention models like Qwen3.5), maximizes GPU layers, and picks the best context size for your hardware. Browse and download models directly from HuggingFace with VRAM fit indicators per quant variant.
+
+### Coding Agent with Self-Planning
+
+Project mode turns your local model into a coding agent with file read/write/edit, search, and sandboxed command execution. A research-backed self-planning pipeline (inspired by [Self-Planning](https://arxiv.org/abs/2303.06689) and [BRAID](https://arxiv.org/abs/2512.15959)) generates a step plan before execution:
+
+1. **Retrieval** -- searches the codebase for relevant files based on your request
+2. **Planning** -- generates a numbered step plan with no tools (forces thinking before acting)
+3. **Execution** -- follows the plan using tools, with a verify-and-repair loop at the end
+
+Commands run inside a [Landlock](https://landlock.io/) sandbox with an approval flow. Background processes (dev servers, watchers) are tracked with auto-kill. Workspace UI includes file tree, git diff view, and a control panel with sampling sliders tuned to Qwen3.5 coding defaults.
+
+### Chat
+
+Streaming chat with markdown, KaTeX math, syntax highlighting, and `<think>` block support. Built-in web search (SearXNG) and URL fetch tools. Multi-turn editing, image/vision support, adjustable sampling and reasoning budget, conversation tags, export, and prompt presets.
+
+### Everything Else
+
+- HuggingFace search, trending, download with progress/resume
+- Per-model system prompts with template variables
+- KV cache persistence across sessions
+- Server log viewer, model comparison page
+- Keyboard shortcuts (Ctrl+N, Escape, etc.)
 
 ## Requirements
 
