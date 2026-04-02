@@ -5,11 +5,11 @@ export function getWritablePaths(): string[] {
 }
 
 export function addWritablePath(path: string): void {
-	execute('INSERT OR IGNORE INTO sandbox_writable_paths (path) VALUES ($path)', { path });
+	execute('INSERT OR IGNORE INTO sandbox_writable_paths (path) VALUES ($path)', { $path: path });
 }
 
 export function removeWritablePath(id: number): void {
-	execute('DELETE FROM sandbox_writable_paths WHERE id = $id', { id });
+	execute('DELETE FROM sandbox_writable_paths WHERE id = $id', { $id: id });
 }
 
 export function getApprovedCommands(): string[] {
@@ -19,11 +19,11 @@ export function getApprovedCommands(): string[] {
 }
 
 export function addApprovedCommand(pattern: string): void {
-	execute('INSERT OR IGNORE INTO approved_commands (pattern) VALUES ($pattern)', { pattern });
+	execute('INSERT OR IGNORE INTO approved_commands (pattern) VALUES ($pattern)', { $pattern: pattern });
 }
 
 export function removeApprovedCommand(id: number): void {
-	execute('DELETE FROM approved_commands WHERE id = $id', { id });
+	execute('DELETE FROM approved_commands WHERE id = $id', { $id: id });
 }
 
 export function isCommandApproved(command: string): boolean {
