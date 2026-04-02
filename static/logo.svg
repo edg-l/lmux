@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="50%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="uxGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7c3aed" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#a855f7" stop-opacity="0.3"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Subtle background glow behind the letters -->
+  <ellipse cx="256" cy="256" rx="200" ry="120" fill="#7c3aed" opacity="0.06"/>
+
+  <!-- Main text: LM large and bold -->
+  <text x="256" y="290" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-weight="800" font-size="220" fill="url(#textGrad)" filter="url(#glow)" letter-spacing="-8">LM</text>
+
+  <!-- "ux" smaller, tucked into the bottom-right -->
+  <text x="388" y="360" text-anchor="start" font-family="system-ui, -apple-system, sans-serif" font-weight="300" font-size="80" fill="#a855f7" opacity="0.6">ux</text>
+
+  <!-- Accent line under LM -->
+  <line x1="100" y1="310" x2="370" y2="310" stroke="url(#textGrad)" stroke-width="3" stroke-linecap="round" filter="url(#softGlow)" opacity="0.4"/>
+
+  <!-- Small node dots along the accent line -->
+  <circle cx="130" cy="310" r="4" fill="#c084fc" opacity="0.6"/>
+  <circle cx="200" cy="310" r="4" fill="#a855f7" opacity="0.5"/>
+  <circle cx="270" cy="310" r="4" fill="#7c3aed" opacity="0.4"/>
+  <circle cx="340" cy="310" r="4" fill="#7c3aed" opacity="0.3"/>
+</svg>
