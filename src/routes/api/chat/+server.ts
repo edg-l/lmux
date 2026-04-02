@@ -95,7 +95,11 @@ export const POST: RequestHandler = async ({ request }) => {
 				let effectiveSystemPrompt = systemPrompt;
 
 				// Planning pass: when plan_enabled and project_id, generate a plan first
-				if (body.plan_enabled && body.project_id) {
+				// Skip planning on continuations (when previous message is assistant/tool)
+				const prevMsg = normalized.length >= 2 ? normalized[normalized.length - 2] : null;
+				const isContinuation =
+					prevMsg?.role === 'assistant' || prevMsg?.role === 'tool';
+				if (body.plan_enabled && body.project_id && !isContinuation) {
 					// Pass 0: Retrieval - get codebase context for the planning prompt
 					controller.enqueue(
 						new TextEncoder().encode(
@@ -254,6 +258,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					? [{ role: 'system', content: effectiveSystemPrompt }, ...normalized]
 					: [...normalized];
 				let reachedLimit = true;
+				let hasRetried = false;
 
 				for (let iteration = 0; iteration <= MAX_TOOL_ITERATIONS; iteration++) {
 					const disableTools = iteration === MAX_TOOL_ITERATIONS;
@@ -515,8 +520,21 @@ export const POST: RequestHandler = async ({ request }) => {
 						continue;
 					}
 
-					// No tool calls: if content is empty, the model may have stalled -- emit a notice
+					// No tool calls: if content is empty, auto-retry once with a nudge
 					if (!result.content.trim()) {
+						if (!hasRetried) {
+							hasRetried = true;
+							messages.push({
+								role: 'assistant',
+								content: ''
+							});
+							messages.push({
+								role: 'user',
+								content: 'Continue with the next step.'
+							});
+							continue;
+						}
+						// Already retried, give up
 						controller.enqueue(
 							new TextEncoder().encode(
 								sseEvent(
