@@ -1,5 +1,17 @@
-import { statSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { statSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
+
+// Common toolchain directories that build tools need write access to
+const TOOLCHAIN_WRITABLE_DIRS = [
+	'.cargo',      // Rust: cargo registry, git checkouts
+	'.rustup',     // Rust: toolchain management
+	'.cache',      // General: pip, bun, go build cache, etc.
+	'.npm',        // Node: npm cache
+	'.bun',        // Bun: bun cache
+	'.local/share', // General: various tools
+	'go',          // Go: GOPATH default
+];
 
 let landLockAvailable: boolean | null = null;
 let bashPath: string = '/bin/bash';
@@ -29,6 +41,15 @@ export function buildSandboxedCommand(
 			'-rwfiles',
 			'/dev/null'
 		];
+
+		// Add common toolchain directories
+		const home = homedir();
+		for (const dir of TOOLCHAIN_WRITABLE_DIRS) {
+			const fullPath = join(home, dir);
+			if (existsSync(fullPath)) {
+				args.push('-rw', fullPath);
+			}
+		}
 
 		for (const p of extraWritablePaths) {
 			try {
