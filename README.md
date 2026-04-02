@@ -1,6 +1,10 @@
-# lmux
+<p align="center">
+  <img src="static/logo.svg" alt="lmux" width="200"/>
+</p>
 
-A lightweight web UI for [llama.cpp](https://github.com/ggerganov/llama.cpp). Manage local GGUF models, browse and download from HuggingFace, configure launch profiles based on your hardware, and chat with running models.
+<h1 align="center">lmux</h1>
+
+<p align="center">A lightweight web UI for <a href="https://github.com/ggerganov/llama.cpp">llama.cpp</a>. Manage local GGUF models, browse and download from HuggingFace, configure launch profiles based on your hardware, and chat with running models.</p>
 
 Built with SvelteKit, Bun, and SQLite.
 
