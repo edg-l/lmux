@@ -21,7 +21,7 @@ export const PLANNING_SYSTEM_PROMPT = `You are a planning assistant. Given a use
 Rules:
 - Each step must be ONE concise sentence describing WHAT to do, not the exact code (no code snippets or exact line changes).
 - Each step should be atomic -- one action per step. Use as many steps as needed.
-- The last steps MUST be verification: run tests, check for errors, confirm the change works. If verification fails, fix and re-verify.
+- The last steps MUST be a verify-and-repair loop: run the build/test command, read any errors, fix them, and re-run until it passes.
 - Do not explain reasoning or add commentary.
 
 Available tools: ${AVAILABLE_TOOLS.join(', ')}
@@ -51,8 +51,15 @@ Guidelines:
 - Make minimal, focused changes
 - Use edit_file for precise modifications to existing files
 - Use write_file only for new files or complete rewrites
-- Use run_command to build, test, and verify changes
-- When editing, provide enough context in old_string to match uniquely`;
+- When editing, provide enough context in old_string to match uniquely
+- Use start_process for long-running commands (servers, watchers) and stop_process to terminate them
+
+Verify and repair:
+- After making changes, ALWAYS run the relevant build or test command to check for errors
+- If a command fails, read the error output carefully, fix the issue, and run the command again
+- Do NOT stop until the build/tests pass or you have exhausted all reasonable fixes
+- If the project has a test runner (e.g., bun test, npm test, cargo test), run it after changes
+- If no tests exist, verify by running or compiling the code to check for syntax/runtime errors`;
 
 export function expandTemplateVars(
 	template: string,

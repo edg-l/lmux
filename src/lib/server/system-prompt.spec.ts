@@ -14,8 +14,8 @@ describe('PLANNING_SYSTEM_PROMPT', () => {
 		expect(PLANNING_SYSTEM_PROMPT).toContain('atomic');
 	});
 
-	it('contains verification instruction', () => {
-		expect(PLANNING_SYSTEM_PROMPT).toContain('verification');
+	it('contains verify-and-repair instruction', () => {
+		expect(PLANNING_SYSTEM_PROMPT).toContain('verify-and-repair');
 	});
 
 	it('instructs not to write code', () => {
