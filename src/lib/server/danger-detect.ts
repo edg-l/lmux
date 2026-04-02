@@ -81,6 +81,14 @@ const dangerRules: DangerRule[] = [
 	{
 		test: (s) => /^shred\b/.test(s),
 		label: 'shred'
+	},
+	{
+		test: (s) => /^eval\b/.test(s),
+		label: 'eval'
+	},
+	{
+		test: (s) => /^exec\b/.test(s),
+		label: 'exec'
 	}
 ];
 
@@ -127,6 +135,37 @@ export function detectDangerousPatterns(command: string): DangerMatch[] {
 				});
 				break; // one label per segment
 			}
+		}
+	}
+
+	// Full-command injection patterns detected on the raw command string
+	const fullCommandPatterns: { regex: RegExp; label: string }[] = [
+		{
+			// Matches > or >> redirects but NOT 2>&1 or >&2 forms
+			// Negative lookbehind excludes digit& prefix; negative lookahead excludes >&
+			regex: /(?<![0-9&])>{1,2}(?!&)\s*\S/g,
+			label: 'output redirect (>)'
+		},
+		{
+			// Matches backtick-enclosed content
+			regex: /`[^`]*`/g,
+			label: 'backtick substitution'
+		},
+		{
+			regex: /\$\(/g,
+			label: 'subshell $(...)'
+		}
+	];
+
+	for (const { regex, label } of fullCommandPatterns) {
+		let m: RegExpExecArray | null;
+		while ((m = regex.exec(command)) !== null) {
+			matches.push({
+				segment: m[0],
+				label,
+				startIndex: m.index,
+				endIndex: m.index + m[0].length
+			});
 		}
 	}
 
