@@ -511,12 +511,13 @@
 			}
 
 			const lastMsg = messages[messages.length - 1];
-			if (lastMsg?.role === 'assistant' && lastMsg.content) {
-				await saveMessage(conversationId, 'assistant', lastMsg.content, {
+			if (lastMsg?.role === 'assistant') {
+				await saveMessage(conversationId, 'assistant', lastMsg.content || '', {
 					...(lastMsg.plan && { plan: lastMsg.plan })
 				});
 			}
-		} catch {
+		} catch (err) {
+			console.error('Chat error:', err);
 			messages = messages.map((m, i) =>
 				i === messages.length - 1 ? { ...m, content: m.content || 'Error: Connection failed' } : m
 			);
