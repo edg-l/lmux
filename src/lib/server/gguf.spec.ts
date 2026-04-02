@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { parseGgufFromBuffer, parseQuantFromFilename, FILE_TYPE_MAP } from './gguf';
 
 /**

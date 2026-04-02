@@ -1,18 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
-import { writeFile as fsWriteFile } from 'node:fs/promises';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-
-// Vitest runs in Node, but the source files use the Bun global API.
-// Provide a minimal shim so the modules under test can execute.
-vi.stubGlobal('Bun', {
-	file: (path: string) => ({
-		exists: () => Promise.resolve(existsSync(path)),
-		text: () => Promise.resolve(readFileSync(path, 'utf-8'))
-	}),
-	write: (path: string, content: string) => fsWriteFile(path, content, 'utf-8')
-});
 
 import { resolveProjectPath } from './path-utils';
 import { editProjectFile } from './edit-file';
