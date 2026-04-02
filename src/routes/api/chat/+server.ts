@@ -13,7 +13,7 @@ import {
 import { detectDangerousPatterns } from '$lib/server/danger-detect';
 import { isLandlockAvailable } from '$lib/server/sandbox';
 import { getProject } from '$lib/server/projects';
-import { isCommandApproved } from '$lib/server/sandbox-rules';
+import { isCommandApproved, recordApprovalResult } from '$lib/server/sandbox-rules';
 import { homedir } from 'node:os';
 
 interface ChatMessage {
@@ -220,6 +220,8 @@ export const POST: RequestHandler = async ({ request }) => {
 									// Remove from pending list after resolution
 									const idx = pendingApprovalIds.indexOf(requestId);
 									if (idx !== -1) pendingApprovalIds.splice(idx, 1);
+
+									if (command) recordApprovalResult(command, approvalResult);
 
 									if (approvalResult === 'timeout') {
 										toolResult = 'Command approval timed out';

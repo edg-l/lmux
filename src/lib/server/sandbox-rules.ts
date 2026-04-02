@@ -1,4 +1,5 @@
 import { queryAll, execute } from './db';
+import type { ApprovalResult } from './approval-store';
 
 export function getWritablePaths(): string[] {
 	return queryAll<{ path: string }>('SELECT path FROM sandbox_writable_paths').map((r) => r.path);
@@ -41,4 +42,22 @@ function matchesPattern(pattern: string, command: string): boolean {
 	}
 	// Prefix matching: exact match OR command starts with "pattern "
 	return command === pattern || command.startsWith(pattern + ' ');
+}
+
+// Approval history
+
+export function recordApprovalResult(command: string, result: ApprovalResult): void {
+	execute('INSERT INTO approval_history (command, result) VALUES ($command, $result)', {
+		$command: command,
+		$result: result
+	});
+}
+
+export function getApprovalHistory(
+	command: string
+): Array<{ result: ApprovalResult; created_at: string }> {
+	return queryAll<{ result: ApprovalResult; created_at: string }>(
+		'SELECT result, created_at FROM approval_history WHERE command = $command ORDER BY created_at DESC LIMIT 10',
+		{ $command: command }
+	);
 }

@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { resolveApproval, getApprovalCommand } from '$lib/server/approval-store';
-import { addApprovedCommand } from '$lib/server/sandbox-rules';
+import { addApprovedCommand, recordApprovalResult } from '$lib/server/sandbox-rules';
 
 export const POST: RequestHandler = async ({ request }) => {
 	const { requestId, approved, remember } = await request.json();
@@ -10,7 +10,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	// Read command before resolving (resolving deletes the entry)
-	const command = remember && approved ? getApprovalCommand(requestId) : undefined;
+	const command = getApprovalCommand(requestId);
 
 	const found = resolveApproval(requestId, approved);
 	if (!found) {
@@ -18,7 +18,10 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	if (command) {
-		addApprovedCommand(command);
+		recordApprovalResult(command, approved ? 'approved' : 'denied');
+		if (remember && approved) {
+			addApprovedCommand(command);
+		}
 	}
 
 	return json({ ok: true });
