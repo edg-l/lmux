@@ -47,11 +47,11 @@
 	}
 </script>
 
-<div class="flex flex-col">
+<div class="flex min-h-0 flex-col">
 	<div class="mb-1 px-2 text-xs font-medium tracking-wide text-[var(--color-text-muted)] uppercase">
 		Sessions
 	</div>
-	<div class="flex-1 overflow-y-auto">
+	<div class="min-h-0 flex-1 overflow-y-auto">
 		{#each conversations as conv (conv.id)}
 			<div
 				class="group flex items-center rounded transition-colors
@@ -92,7 +92,7 @@
 	</div>
 	<button
 		onclick={onNew}
-		class="mt-1 flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-xs text-[var(--color-accent)] transition-colors hover:bg-[var(--color-accent-subtle)]"
+		class="mt-1 flex w-full shrink-0 items-center gap-1.5 rounded px-2 py-1.5 text-xs text-[var(--color-accent)] transition-colors hover:bg-[var(--color-accent-subtle)]"
 	>
 		<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 			<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
