@@ -6,13 +6,14 @@
 	import FilePreview from '$lib/components/FilePreview.svelte';
 	import SessionList from '$lib/components/SessionList.svelte';
 	import ChatPanel from '$lib/components/ChatPanel.svelte';
-	import type { Message, ServerInfo, TokenUsage } from '$lib/types/chat';
+	import type { Message, TokenUsage } from '$lib/types/chat';
 	import { processSSEStream } from '$lib/utils/stream';
 	import {
 		enrichToolMessages,
 		exportChat as exportChatUtil,
 		prepareMessagesForApi
 	} from '$lib/utils/chat';
+	import { getServerInfo, connectServerInfo } from '$lib/stores/server-info.svelte';
 
 	interface Project {
 		id: number;
@@ -45,7 +46,7 @@
 	let activeConversationId: number | null = $state(null);
 
 	// Server info
-	let serverInfo: ServerInfo | null = $state(null);
+	let serverInfo = $derived(getServerInfo());
 
 	// Session list ref
 	let sessionListComponent: SessionList | undefined = $state();
@@ -66,7 +67,7 @@
 		loadProject();
 		loadFiles();
 		loadGitStatus();
-		cleanupServerInfo = loadServerInfo();
+		cleanupServerInfo = connectServerInfo();
 
 		function handleGlobalKeydown(e: KeyboardEvent) {
 			if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
@@ -128,17 +129,6 @@
 		}
 	}
 
-	function loadServerInfo() {
-		const es = new EventSource('/api/server/status');
-		es.onmessage = (event) => {
-			try {
-				serverInfo = JSON.parse(event.data);
-			} catch {
-				/* ignore */
-			}
-		};
-		return () => es.close();
-	}
 
 	async function selectConversation(id: number) {
 		activeConversationId = id;

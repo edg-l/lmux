@@ -1,13 +1,18 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import ChatPanel from '$lib/components/ChatPanel.svelte';
-	import type { Message, ServerInfo } from '$lib/types/chat';
+	import type { Message } from '$lib/types/chat';
 	import { processSSEStream } from '$lib/utils/stream';
 	import {
 		enrichToolMessages,
 		exportChat as exportChatUtil,
 		prepareMessagesForApi
 	} from '$lib/utils/chat';
+	import {
+		getServerInfo,
+		getServerLogs,
+		connectServerInfo
+	} from '$lib/stores/server-info.svelte';
 
 	interface Conversation {
 		id: number;
@@ -50,8 +55,9 @@
 	let confirmDeleteId: number | null = $state(null);
 	let sidebarOpen = $state(true);
 
-	// Server/model info
-	let serverInfo: ServerInfo | null = $state(null);
+	// Server/model info (from shared store)
+	let serverInfo = $derived(getServerInfo());
+	let serverLogs = $derived(getServerLogs());
 
 	// Sampling panel state
 	let samplingOpen = $state(false);
@@ -112,7 +118,6 @@
 
 	// Feature 9: Server logs panel
 	let logsOpen = $state(false);
-	let serverLogs = $state<string[]>([]);
 	let logsContainer: HTMLDivElement | undefined = $state();
 
 	// Feature 10: Conversation tags
@@ -168,12 +173,20 @@
 		loadToolsEnabled();
 		loadAvailableModels();
 		loadPresets();
-		const cleanupServerInfo = loadServerInfo();
+		const cleanupServerInfo = connectServerInfo();
 		document.addEventListener('keydown', handleGlobalKeydown);
 		return () => {
 			cleanupServerInfo();
 			document.removeEventListener('keydown', handleGlobalKeydown);
 		};
+	});
+
+	// Auto-load sampling params when model changes
+	$effect(() => {
+		if (serverInfo?.modelId && serverInfo.modelId !== samplingModelId) {
+			samplingModelId = serverInfo.modelId;
+			loadSamplingParams(serverInfo.modelId);
+		}
 	});
 
 	async function loadAvailableModels() {
@@ -217,26 +230,6 @@
 		}
 	}
 
-	function loadServerInfo() {
-		const es = new EventSource('/api/server/status');
-		es.onmessage = (event) => {
-			try {
-				const data = JSON.parse(event.data);
-				serverInfo = data;
-				if (data.stderr && Array.isArray(data.stderr)) {
-					serverLogs = data.stderr.slice(-100);
-				}
-				if (serverInfo?.modelId && serverInfo.modelId !== samplingModelId) {
-					samplingModelId = serverInfo.modelId;
-					loadSamplingParams(serverInfo.modelId);
-				}
-			} catch {
-				/* ignore */
-			}
-		};
-		// Keep listening for updates (model load, t/s changes)
-		return () => es.close();
-	}
 
 	async function loadSamplingParams(modelId: number) {
 		try {
