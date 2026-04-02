@@ -111,8 +111,8 @@ describe('buildSandboxedCommand (with landlock)', () => {
 		if (!isLandlockAvailable()) return;
 		const result = buildSandboxedCommand('/my/project', 'ls');
 		const joined = result.args.join(' ');
-		expect(joined).toContain('-rw /my/project');
-		expect(joined).toContain('-rw /tmp');
+		expect(joined).toContain('-rw +refer /my/project');
+		expect(joined).toContain('-rw +refer /tmp');
 	});
 
 	it('includes -rwfiles /dev/null when sandboxed', () => {
@@ -168,7 +168,7 @@ describe('buildSandboxedCommand extraWritablePaths', () => {
 			return;
 		}
 		const result = buildSandboxedCommand('/project', 'ls', [tmpDir]);
-		expect(result.args.join(' ')).toContain(`-rw ${tmpDir}`);
+		expect(result.args.join(' ')).toContain(`-rw +refer ${tmpDir}`);
 		rmSync(tmpDir, { recursive: true, force: true });
 	});
 

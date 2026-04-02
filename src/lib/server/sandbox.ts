@@ -35,8 +35,10 @@ export function buildSandboxedCommand(
 			'-ro',
 			'/',
 			'-rw',
+			'+refer',
 			projectPath,
 			'-rw',
+			'+refer',
 			'/tmp',
 			'-rwfiles',
 			'/dev/null'
@@ -47,7 +49,7 @@ export function buildSandboxedCommand(
 		for (const dir of TOOLCHAIN_WRITABLE_DIRS) {
 			const fullPath = join(home, dir);
 			if (existsSync(fullPath)) {
-				args.push('-rw', fullPath);
+				args.push('-rw', '+refer', fullPath);
 			}
 		}
 
@@ -55,7 +57,7 @@ export function buildSandboxedCommand(
 			try {
 				const st = statSync(p);
 				if (st.isDirectory()) {
-					args.push('-rw', p);
+					args.push('-rw', '+refer', p);
 				} else {
 					args.push('-rwfiles', p);
 				}
