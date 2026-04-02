@@ -80,7 +80,8 @@ export async function startTrackedProcess(
 	command: string,
 	projectId: number,
 	projectRoot: string,
-	waitFor?: string
+	waitFor?: string,
+	timeoutMinutes?: number
 ): Promise<{ id: string; output: string; running: boolean; exitCode: number | null }> {
 	// Check max processes per project
 	const projectProcesses = [...processes.values()].filter(
@@ -106,6 +107,9 @@ export async function startTrackedProcess(
 	const id = generateId();
 	const output: string[] = [];
 
+	const autoKillMs = timeoutMinutes
+		? Math.min(timeoutMinutes * 60 * 1000, AUTO_KILL_MS)
+		: AUTO_KILL_MS;
 	const timer = setTimeout(() => {
 		const tracked = processes.get(id);
 		if (tracked && tracked.running) {
@@ -122,7 +126,7 @@ export async function startTrackedProcess(
 				}
 			}, KILL_GRACE_MS);
 		}
-	}, AUTO_KILL_MS);
+	}, autoKillMs);
 
 	const tracked: TrackedProcess = {
 		id,

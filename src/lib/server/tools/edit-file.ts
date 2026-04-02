@@ -3,33 +3,42 @@ import { diffLines as computeDiffLines } from 'diff';
 
 function generateDiffSnippet(oldStr: string, newStr: string, lineNumber: number): string {
 	const changes = computeDiffLines(oldStr, newStr);
-	const diffLines: string[] = [`@@ line ${lineNumber} @@`];
+	// Each line: "TYPE:LINENUM:CONTENT" where TYPE is +, -, or space
+	const diffLines: string[] = [];
+	let oldLine = lineNumber;
+	let newLine = lineNumber;
 
 	for (const change of changes) {
 		const lines = change.value.replace(/\n$/, '').split('\n');
 		for (const line of lines) {
 			if (change.added) {
-				diffLines.push(`+ ${line}`);
+				diffLines.push(`+:${newLine}:${line}`);
+				newLine++;
 			} else if (change.removed) {
-				diffLines.push(`- ${line}`);
+				diffLines.push(`-:${oldLine}:${line}`);
+				oldLine++;
 			} else {
-				diffLines.push(`  ${line}`);
+				diffLines.push(` :${oldLine}:${line}`);
+				oldLine++;
+				newLine++;
 			}
 		}
 	}
 
-	// Strip common leading whitespace from content (after the +/- prefix)
-	const contentLines = diffLines.slice(1); // skip @@ header
+	// Strip common leading whitespace from content (after the type:linenum: prefix)
 	let minIndent = Infinity;
-	for (const line of contentLines) {
-		const content = line.slice(2); // skip prefix like "+ " or "  "
+	for (const line of diffLines) {
+		const colonIdx = line.indexOf(':', 2); // skip "X:" to find second colon
+		const content = line.slice(colonIdx + 1);
 		if (content.trim().length === 0) continue;
 		const indent = content.match(/^ */)?.[0].length ?? 0;
 		minIndent = Math.min(minIndent, indent);
 	}
 	if (minIndent > 0 && minIndent < Infinity) {
-		for (let i = 1; i < diffLines.length; i++) {
-			diffLines[i] = diffLines[i].slice(0, 2) + diffLines[i].slice(2 + minIndent);
+		for (let i = 0; i < diffLines.length; i++) {
+			const colonIdx = diffLines[i].indexOf(':', 2);
+			diffLines[i] =
+				diffLines[i].slice(0, colonIdx + 1) + diffLines[i].slice(colonIdx + 1 + minIndent);
 		}
 	}
 
@@ -39,7 +48,7 @@ function generateDiffSnippet(oldStr: string, newStr: string, lineNumber: number)
 		const half = Math.floor(maxLines / 2);
 		return [
 			...diffLines.slice(0, half),
-			`  ... (${diffLines.length - maxLines} more lines)`,
+			` :0:... (${diffLines.length - maxLines} more lines)`,
 			...diffLines.slice(-half)
 		].join('\n');
 	}

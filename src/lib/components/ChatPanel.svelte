@@ -6,12 +6,37 @@
 	import type { Message, TokenUsage, ServerInfo } from '$lib/types/chat';
 	import { parseThinking, linkifyText, getToolSummary, highlightDangers } from '$lib/utils/chat';
 
-	function extractDiffSnippet(content: string): { summary: string; diff: string | null } {
-		const parts = content.split('\n\n@@');
-		if (parts.length >= 2) {
-			return { summary: parts[0], diff: '@@' + parts.slice(1).join('\n\n@@') };
+	interface DiffLine {
+		type: '+' | '-' | ' ';
+		lineNum: number;
+		content: string;
+	}
+
+	function extractDiffSnippet(content: string): { summary: string; diff: DiffLine[] | null } {
+		// New format: lines are "TYPE:LINENUM:CONTENT"
+		const lines = content.split('\n');
+		const diffLines: DiffLine[] = [];
+		const summaryLines: string[] = [];
+		let inDiff = false;
+
+		for (const line of lines) {
+			const match = line.match(/^([+ -]):(\d+):(.*)$/);
+			if (match) {
+				inDiff = true;
+				diffLines.push({
+					type: match[1] as '+' | '-' | ' ',
+					lineNum: parseInt(match[2]),
+					content: match[3]
+				});
+			} else if (!inDiff) {
+				summaryLines.push(line);
+			}
 		}
-		return { summary: content, diff: null };
+
+		return {
+			summary: summaryLines.join('\n').trim(),
+			diff: diffLines.length > 0 ? diffLines : null
+		};
 	}
 
 	interface Props {
@@ -341,13 +366,37 @@
 						</button>
 						{#if parsed?.diff}
 							<div class="border-t border-cyan-500/10 px-2.5 py-1.5">
-								<pre class="font-mono text-xs leading-relaxed whitespace-pre-wrap"><code
-										>{#each parsed.diff.split('\n') as line}{#if line.startsWith('+')}<span
-													class="text-emerald-400">{line}</span
-												>{:else if line.startsWith('-')}<span class="text-red-400">{line}</span
-												>{:else}<span class="text-[var(--color-text-muted)]">{line}</span>{/if}
-										{/each}</code
-									></pre>
+								<div class="font-mono text-xs leading-relaxed">
+									{#each parsed.diff as dl}
+										<div
+											class="flex {dl.type === '+'
+												? 'bg-emerald-500/10'
+												: dl.type === '-'
+													? 'bg-red-500/10'
+													: ''}"
+										>
+											<span
+												class="w-8 shrink-0 pr-2 text-right text-[var(--color-text-muted)] select-none"
+												>{dl.lineNum || ''}</span
+											>
+											<span
+												class="w-4 shrink-0 select-none {dl.type === '+'
+													? 'text-emerald-400'
+													: dl.type === '-'
+														? 'text-red-400'
+														: 'text-[var(--color-text-muted)]'}"
+												>{dl.type === ' ' ? '' : dl.type}</span
+											>
+											<span
+												class="whitespace-pre-wrap {dl.type === '+'
+													? 'text-emerald-400'
+													: dl.type === '-'
+														? 'text-red-400'
+														: 'text-[var(--color-text-muted)]'}">{dl.content}</span
+											>
+										</div>
+									{/each}
+								</div>
 							</div>
 						{:else if msg.toolError && msg.toolStatus === 'done' && msg.content}
 							<div class="border-t border-red-500/10 px-2.5 py-1.5">
@@ -440,13 +489,37 @@
 						</button>
 						{#if parsed?.diff}
 							<div class="border-t border-cyan-500/10 px-2.5 py-1.5">
-								<pre class="font-mono text-xs leading-relaxed whitespace-pre-wrap"><code
-										>{#each parsed.diff.split('\n') as line}{#if line.startsWith('+')}<span
-													class="text-emerald-400">{line}</span
-												>{:else if line.startsWith('-')}<span class="text-red-400">{line}</span
-												>{:else}<span class="text-[var(--color-text-muted)]">{line}</span>{/if}
-										{/each}</code
-									></pre>
+								<div class="font-mono text-xs leading-relaxed">
+									{#each parsed.diff as dl}
+										<div
+											class="flex {dl.type === '+'
+												? 'bg-emerald-500/10'
+												: dl.type === '-'
+													? 'bg-red-500/10'
+													: ''}"
+										>
+											<span
+												class="w-8 shrink-0 pr-2 text-right text-[var(--color-text-muted)] select-none"
+												>{dl.lineNum || ''}</span
+											>
+											<span
+												class="w-4 shrink-0 select-none {dl.type === '+'
+													? 'text-emerald-400'
+													: dl.type === '-'
+														? 'text-red-400'
+														: 'text-[var(--color-text-muted)]'}"
+												>{dl.type === ' ' ? '' : dl.type}</span
+											>
+											<span
+												class="whitespace-pre-wrap {dl.type === '+'
+													? 'text-emerald-400'
+													: dl.type === '-'
+														? 'text-red-400'
+														: 'text-[var(--color-text-muted)]'}">{dl.content}</span
+											>
+										</div>
+									{/each}
+								</div>
 							</div>
 						{:else if msg.toolError && msg.content}
 							<div class="border-t border-red-500/10 px-2.5 py-1.5">

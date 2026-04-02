@@ -1,7 +1,7 @@
 import { startTrackedProcess, getRunningProcesses } from '../process-registry';
 
 export async function startBackgroundProcess(
-	args: { command: string; wait_for?: string },
+	args: { command: string; wait_for?: string; timeout?: number },
 	projectRoot: string,
 	projectId: number
 ): Promise<{ result: string; error?: boolean }> {
@@ -10,7 +10,8 @@ export async function startBackgroundProcess(
 			args.command,
 			projectId,
 			projectRoot,
-			args.wait_for
+			args.wait_for,
+			args.timeout
 		);
 
 		const status = running ? 'running' : `exited (code ${exitCode})`;

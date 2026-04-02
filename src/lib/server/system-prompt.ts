@@ -13,7 +13,8 @@ const AVAILABLE_TOOLS = [
 	'search_files',
 	'run_command',
 	'start_process',
-	'stop_process'
+	'stop_process',
+	'list_processes'
 ];
 
 export const RETRIEVAL_SYSTEM_PROMPT = `You are a search assistant. Given a user request about a coding project, output 3-5 search terms (one per line) that would find the most relevant source files. Output ONLY the search terms, one per line. No numbering, no explanation.

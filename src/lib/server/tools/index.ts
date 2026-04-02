@@ -9,6 +9,7 @@ import { searchProjectFiles } from './search-files';
 import { runProjectCommand } from './run-command';
 import { startBackgroundProcess } from './start-process';
 import { stopBackgroundProcess } from './stop-process';
+import { listBackgroundProcesses } from './list-processes';
 
 export interface ToolDefinition {
 	type: 'function';
@@ -202,6 +203,11 @@ const codingToolDefinitions: ToolDefinition[] = [
 						type: 'string',
 						description:
 							'Optional string to wait for in output before returning (e.g., "Serving HTTP"). Waits up to 10 seconds.'
+					},
+					timeout: {
+						type: 'number',
+						description:
+							'Auto-kill timeout in minutes (default: 30). Process is terminated after this many minutes.'
 					}
 				},
 				required: ['command']
@@ -223,6 +229,19 @@ const codingToolDefinitions: ToolDefinition[] = [
 					}
 				},
 				required: ['id']
+			}
+		}
+	},
+	{
+		type: 'function',
+		function: {
+			name: 'list_processes',
+			description:
+				'List all background processes for this project. Shows process ID, command, status, and age.',
+			parameters: {
+				type: 'object',
+				properties: {},
+				required: []
 			}
 		}
 	}
@@ -348,7 +367,7 @@ export async function executeTool(
 		case 'start_process': {
 			if (!project) throw new Error('start_process requires a project context');
 			return startBackgroundProcess(
-				args as { command: string; wait_for?: string },
+				args as { command: string; wait_for?: string; timeout?: number },
 				project.path,
 				project.id
 			);
@@ -356,6 +375,10 @@ export async function executeTool(
 		case 'stop_process': {
 			if (!project) throw new Error('stop_process requires a project context');
 			return stopBackgroundProcess(args as { id: string });
+		}
+		case 'list_processes': {
+			if (!project) throw new Error('list_processes requires a project context');
+			return listBackgroundProcesses(project.id);
 		}
 		default:
 			throw new Error(`Unknown tool: ${name}`);
