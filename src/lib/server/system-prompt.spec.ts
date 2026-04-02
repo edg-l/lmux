@@ -6,20 +6,16 @@ describe('PLANNING_SYSTEM_PROMPT', () => {
 		expect(PLANNING_SYSTEM_PROMPT).toContain('numbered step-by-step plan');
 	});
 
-	it('contains instruction for one sentence per step', () => {
-		expect(PLANNING_SYSTEM_PROMPT).toContain('ONE sentence');
+	it('contains instruction for concise steps', () => {
+		expect(PLANNING_SYSTEM_PROMPT).toContain('ONE concise sentence');
 	});
 
-	it('contains IF/ELSE instruction', () => {
-		expect(PLANNING_SYSTEM_PROMPT).toContain('IF/ELSE');
+	it('contains atomic step instruction', () => {
+		expect(PLANNING_SYSTEM_PROMPT).toContain('atomic');
 	});
 
-	it('contains REPEAT/UNTIL instruction', () => {
-		expect(PLANNING_SYSTEM_PROMPT).toContain('REPEAT/UNTIL');
-	});
-
-	it('contains VERIFY instruction', () => {
-		expect(PLANNING_SYSTEM_PROMPT).toContain('VERIFY');
+	it('contains verification instruction', () => {
+		expect(PLANNING_SYSTEM_PROMPT).toContain('verification');
 	});
 
 	it('instructs not to write code', () => {
