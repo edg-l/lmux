@@ -36,7 +36,6 @@ function sseEvent(data: string): string {
 	return `data: ${data}\n\n`;
 }
 
-const MAX_TOOL_ITERATIONS = 100;
 const CHUNK_SIZE = 20;
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -260,8 +259,8 @@ export const POST: RequestHandler = async ({ request }) => {
 				let reachedLimit = true;
 				let hasRetried = false;
 
-				for (let iteration = 0; iteration <= MAX_TOOL_ITERATIONS; iteration++) {
-					const disableTools = iteration === MAX_TOOL_ITERATIONS;
+				for (;;) {
+					const disableTools = false;
 					const llamaRes = await fetch(`http://localhost:${state.port}/v1/chat/completions`, {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
