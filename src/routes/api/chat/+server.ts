@@ -36,7 +36,7 @@ function sseEvent(data: string): string {
 	return `data: ${data}\n\n`;
 }
 
-const MAX_TOOL_ITERATIONS = 25;
+const MAX_TOOL_ITERATIONS = 100;
 const CHUNK_SIZE = 20;
 
 export const POST: RequestHandler = async ({ request }) => {
