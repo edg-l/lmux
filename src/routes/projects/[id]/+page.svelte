@@ -57,14 +57,22 @@
 	>([]);
 
 	// Planning state
-	let planEnabled = $state(false);
+	let planEnabled = $state(true);
 	let planText = $state('');
 	let retrievalStatus = $state<string | null>(null);
 
 	// Reasoning budget state
-	let thinkingBudgetEnabled = $state(false);
-	let thinkingBudgetValue = $state(4096);
+	let thinkingBudgetEnabled = $state(true);
+	let thinkingBudgetValue = $state(32768);
 	let thinkingBudget = $derived(thinkingBudgetEnabled ? thinkingBudgetValue : -1);
+
+	// Auto-disable thinking if context is too small
+	$effect(() => {
+		const ctx = serverInfo?.contextSize;
+		if (ctx && ctx < 32768) {
+			thinkingBudgetEnabled = false;
+		}
+	});
 	let reasoningOpen = $state(false);
 
 	// Sampling state (coding defaults from Qwen3.5 recommendations)
