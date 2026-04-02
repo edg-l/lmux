@@ -28,5 +28,17 @@ export function removeApprovedCommand(id: number): void {
 
 export function isCommandApproved(command: string): boolean {
 	const patterns = getApprovedCommands();
-	return patterns.some((pattern) => command === pattern);
+	return patterns.some((pattern) => matchesPattern(pattern, command));
+}
+
+function matchesPattern(pattern: string, command: string): boolean {
+	if (pattern.includes('*')) {
+		// Glob matching: escape all regex-special chars except *, then replace * with .*
+		const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+		const regexStr = escaped.replace(/\*/g, '.*');
+		const regex = new RegExp(`^${regexStr}$`);
+		return regex.test(command);
+	}
+	// Prefix matching: exact match OR command starts with "pattern "
+	return command === pattern || command.startsWith(pattern + ' ');
 }

@@ -384,9 +384,9 @@ describe('getApprovedCommands / addApprovedCommand / removeApprovedCommand / isC
 		expect(isCommandApproved('bun test')).toBe(true);
 	});
 
-	it('isCommandApproved requires exact match, not a prefix', () => {
+	it('isCommandApproved prefix-matches a command that starts with pattern followed by a space', () => {
 		addApprovedCommand('bun test');
-		expect(isCommandApproved('bun test --watch')).toBe(false);
+		expect(isCommandApproved('bun test --watch')).toBe(true);
 	});
 
 	it('isCommandApproved requires exact match, not a suffix', () => {
@@ -440,5 +440,48 @@ describe('getApprovedCommands / addApprovedCommand / removeApprovedCommand / isC
 		expect(isCommandApproved('bun test')).toBe(true);
 		expect(isCommandApproved('bun build')).toBe(true);
 		expect(isCommandApproved('cargo check')).toBe(true);
+	});
+
+	it("'bun test' prefix-matches 'bun test src/foo.spec.ts'", () => {
+		addApprovedCommand('bun test');
+		expect(isCommandApproved('bun test src/foo.spec.ts')).toBe(true);
+	});
+
+	it("'bun test' does NOT prefix-match 'bun testing' (no space boundary)", () => {
+		addApprovedCommand('bun test');
+		expect(isCommandApproved('bun testing')).toBe(false);
+	});
+
+	it("'cargo *' glob-matches 'cargo build'", () => {
+		addApprovedCommand('cargo *');
+		expect(isCommandApproved('cargo build')).toBe(true);
+	});
+
+	it("'cargo *' glob-matches 'cargo test --release'", () => {
+		addApprovedCommand('cargo *');
+		expect(isCommandApproved('cargo test --release')).toBe(true);
+	});
+
+	it("'npm run *' glob-matches 'npm run build'", () => {
+		addApprovedCommand('npm run *');
+		expect(isCommandApproved('npm run build')).toBe(true);
+	});
+
+	it("'npm run *' does NOT match 'npm install'", () => {
+		addApprovedCommand('npm run *');
+		expect(isCommandApproved('npm install')).toBe(false);
+	});
+
+	it('empty pattern only matches empty command', () => {
+		addApprovedCommand('');
+		expect(isCommandApproved('')).toBe(true);
+		expect(isCommandApproved('anything')).toBe(false);
+	});
+
+	it("pattern with special regex chars like 'g++ *.cpp' works correctly", () => {
+		addApprovedCommand('g++ *.cpp');
+		expect(isCommandApproved('g++ main.cpp')).toBe(true);
+		expect(isCommandApproved('g++ src/main.cpp')).toBe(true);
+		expect(isCommandApproved('gcc main.cpp')).toBe(false);
 	});
 });
