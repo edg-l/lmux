@@ -29,6 +29,7 @@ export async function runProjectCommand(
 		extraWritablePaths
 	);
 
+	const startTime = performance.now();
 	const proc = Bun.spawn(cmdArgs, {
 		cwd: projectRoot,
 		stdout: 'pipe',
@@ -55,11 +56,17 @@ export async function runProjectCommand(
 	const exitCode = await proc.exited;
 	clearTimeout(timer);
 
+	const elapsed = performance.now() - startTime;
+	const elapsedStr =
+		elapsed < 1000 ? `${Math.round(elapsed)}ms` : `${(elapsed / 1000).toFixed(1)}s`;
+
 	let output = stdout + (stderr ? '\n' + stderr : '');
 
 	if (killed) {
 		output += `\n[command timed out after ${timeoutMs / 1000}s]`;
 	}
+
+	output += `\n[exit ${exitCode}, ${elapsedStr}]`;
 
 	const totalBytes = output.length;
 	const sliced = output.slice(offset, offset + maxLength);

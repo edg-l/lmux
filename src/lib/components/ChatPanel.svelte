@@ -4,7 +4,13 @@
 	import { renderMarkdown } from '$lib/markdown';
 	import 'highlight.js/styles/github-dark.css';
 	import type { Message, TokenUsage, ServerInfo } from '$lib/types/chat';
-	import { parseThinking, linkifyText, getToolSummary, highlightDangers } from '$lib/utils/chat';
+	import {
+		parseThinking,
+		linkifyText,
+		getToolSummary,
+		getToolLabel,
+		highlightDangers
+	} from '$lib/utils/chat';
 
 	interface DiffLine {
 		type: '+' | '-' | ' ';
@@ -334,7 +340,7 @@
 									d="M21.75 6.75a4.5 4.5 0 01-4.884 4.484c-1.076-.091-2.264.071-2.95.904l-7.152 8.684a2.548 2.548 0 11-3.586-3.586l8.684-7.152c.833-.686.995-1.874.904-2.95a4.5 4.5 0 016.336-4.486l-3.276 3.276a3.004 3.004 0 002.25 2.25l3.276-3.276c.256.565.398 1.192.398 1.852z"
 								/>
 							</svg>
-							<span class="text-xs font-medium text-cyan-400/80">{msg.toolName ?? 'tool'}</span>
+							<span class="text-xs font-medium text-cyan-400/80">{getToolLabel(msg.toolName)}</span>
 							{#if toolSummary}
 								<span class="min-w-0 truncate text-xs text-[var(--color-text-muted)]"
 									>{toolSummary}</span
@@ -457,9 +463,7 @@
 									d="M11.42 15.17l-5.09-5.09a3.004 3.004 0 010-4.25 3.004 3.004 0 014.25 0l.34.34.34-.34a3.004 3.004 0 014.25 0 3.004 3.004 0 010 4.25l-5.09 5.09zM21.17 8.04l-4.25-4.25a2 2 0 00-2.83 0L12 5.88l-2.09-2.09a2 2 0 00-2.83 0L2.83 8.04a2 2 0 000 2.83L12 20l9.17-9.13a2 2 0 000-2.83z"
 								/>
 							</svg>
-							<span class="text-xs font-medium text-cyan-400/80"
-								>{msg.toolName ?? 'Tool result'}</span
-							>
+							<span class="text-xs font-medium text-cyan-400/80">{getToolLabel(msg.toolName)}</span>
 							{#if toolSummary}
 								<span class="min-w-0 truncate text-xs text-[var(--color-text-muted)]"
 									>{toolSummary}</span

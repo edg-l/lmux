@@ -61,6 +61,26 @@ export function linkifyText(text: string): string {
 	);
 }
 
+const TOOL_LABELS: Record<string, string> = {
+	read_file: 'Reading',
+	write_file: 'Writing',
+	edit_file: 'Editing',
+	insert_lines: 'Inserting',
+	list_directory: 'Listing',
+	search_files: 'Searching',
+	run_command: 'Running',
+	start_process: 'Starting',
+	stop_process: 'Stopping',
+	list_processes: 'Processes',
+	fetch_url: 'Fetching',
+	web_search: 'Searching'
+};
+
+export function getToolLabel(toolName: string | undefined): string {
+	if (!toolName) return 'Tool';
+	return TOOL_LABELS[toolName] ?? toolName;
+}
+
 export function getToolSummary(toolName: string | undefined, toolArgs: string | undefined): string {
 	try {
 		const args = JSON.parse(toolArgs ?? '{}');
@@ -74,6 +94,9 @@ export function getToolSummary(toolName: string | undefined, toolArgs: string | 
 		if (toolName === 'search_files' && args.pattern)
 			return `"${args.pattern}"${args.glob ? ` (${args.glob})` : ''}`;
 		if (toolName === 'list_directory') return args.path || '/';
+		if (toolName === 'start_process' && args.command) return args.command.slice(0, 60);
+		if (toolName === 'stop_process' && args.id) return args.id;
+		if (toolName === 'list_processes') return '';
 		return '';
 	} catch {
 		return '';
