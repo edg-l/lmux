@@ -75,9 +75,7 @@
 	>
 		<div class="flex h-12 items-center px-4">
 			<a href="/" class="flex items-center gap-2">
-				<span class="font-mono text-sm font-semibold tracking-tight text-[var(--color-accent)]"
-					>lmux</span
-				>
+				<img src="/logo.svg" alt="lmux" class="h-6" />
 			</a>
 		</div>
 
