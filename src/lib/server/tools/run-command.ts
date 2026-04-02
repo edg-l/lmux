@@ -8,6 +8,16 @@ export async function runProjectCommand(
 	args: { command: string; timeout?: number; offset?: number; max_length?: number },
 	projectRoot: string
 ): Promise<{ output: string; blockedPaths: string[] }> {
+	// Detect trailing & (background) - not && (logical AND)
+	const trimmedCmd = args.command.trimEnd();
+	if (trimmedCmd.endsWith('&') && !trimmedCmd.endsWith('&&')) {
+		return {
+			output:
+				'Error: Background commands (trailing &) are not supported in run_command. Use the start_process tool instead, which tracks the process so you can check output and stop it later.',
+			blockedPaths: []
+		};
+	}
+
 	const timeoutMs = Math.min(Math.max((args.timeout ?? 30) * 1000, 1000), MAX_TIMEOUT);
 	const maxLength = args.max_length ?? DEFAULT_MAX_LENGTH;
 	const offset = args.offset ?? 0;

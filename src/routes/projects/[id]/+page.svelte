@@ -51,6 +51,11 @@
 	// Session list ref
 	let sessionListComponent: SessionList | undefined = $state();
 
+	// Process tracking
+	let runningProcesses = $state<
+		Array<{ id: string; command: string; startedAt: string; running: boolean }>
+	>([]);
+
 	// Planning state
 	let planEnabled = $state(false);
 	let planText = $state('');
@@ -60,6 +65,35 @@
 	let thinkingBudgetValue = $state(4096);
 	let thinkingBudget = $derived(thinkingBudgetEnabled ? thinkingBudgetValue : -1);
 	let reasoningOpen = $state(false);
+
+	// Sampling state (coding defaults from Qwen3.5 recommendations)
+	let temperature = $state(0.6);
+	let top_p = $state(0.95);
+	let top_k = $state(20);
+	let min_p = $state(0.0);
+	let repeat_penalty = $state(1.0);
+
+	function resetSamplingDefaults() {
+		temperature = 0.6;
+		top_p = 0.95;
+		top_k = 20;
+		min_p = 0.0;
+		repeat_penalty = 1.0;
+	}
+
+	async function fetchProcesses() {
+		try {
+			const res = await fetch(`/api/projects/${projectId}/processes`);
+			if (res.ok) runningProcesses = await res.json();
+		} catch {
+			// ignore
+		}
+	}
+
+	async function killProcess(id: string) {
+		await fetch(`/api/projects/${projectId}/processes/${id}`, { method: 'DELETE' });
+		await fetchProcesses();
+	}
 
 	// Component refs
 	let fileTreeRef: FileTree | undefined = $state();
@@ -71,6 +105,7 @@
 		loadProject();
 		loadFiles();
 		loadGitStatus();
+		fetchProcesses();
 		cleanupServerInfo = connectServerInfo();
 
 		function handleGlobalKeydown(e: KeyboardEvent) {
@@ -300,6 +335,11 @@
 				body: JSON.stringify({
 					messages: chatMessages,
 					sampling: {
+						temperature,
+						top_p,
+						top_k,
+						min_p,
+						repeat_penalty,
 						thinking_budget: thinkingBudget
 					},
 					tools_enabled: true,
@@ -360,6 +400,8 @@
 					}
 					// Add assistant placeholder so thinking dots show while model processes
 					messages = [...messages, { role: 'assistant', content: '' }];
+					// Refresh process list after any tool result
+					fetchProcesses();
 				},
 				getAssistantContent: (toolCallCount) => {
 					const lastAssistant = messages[messages.length - toolCallCount - 1];
@@ -625,7 +667,7 @@
 				</div>
 			</div>
 
-			<!-- Right panel: Content area -->
+			<!-- Center panel: Content area -->
 			<div class="flex min-w-0 flex-1 flex-col">
 				<!-- Tabs -->
 				<div class="flex border-b border-[var(--color-border)]">
@@ -676,82 +718,29 @@
 						onsaveEdit={handleSaveEdit}
 					>
 						{#snippet inputSuffix()}
-							<div class="mx-auto mt-2 max-w-3xl">
-								<div class="mb-1 flex items-center gap-3">
-									<button
-										onclick={() => (planEnabled = !planEnabled)}
-										class="flex items-center gap-1 text-xs transition-colors {planEnabled
-											? 'text-[var(--color-accent)]'
-											: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
-										title={planEnabled ? 'Planning enabled' : 'Planning disabled'}
-									>
-										<svg
-											class="h-3.5 w-3.5"
-											fill="none"
-											stroke="currentColor"
-											viewBox="0 0 24 24"
-											stroke-width="1.5"
-										>
-											<path
-												stroke-linecap="round"
-												stroke-linejoin="round"
-												d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
-											/>
-										</svg>
-										Plan
-									</button>
-								</div>
+							<div class="mt-2 flex items-center gap-3 xl:hidden">
 								<button
-									onclick={() => (reasoningOpen = !reasoningOpen)}
-									class="flex items-center gap-1 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
+									onclick={() => (planEnabled = !planEnabled)}
+									class="flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors {planEnabled
+										? 'bg-[var(--color-accent-subtle,var(--color-surface))] text-[var(--color-accent)]'
+										: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
+									title={planEnabled ? 'Planning enabled' : 'Planning disabled'}
 								>
 									<svg
-										class="h-3 w-3 transition-transform {reasoningOpen ? 'rotate-90' : ''}"
+										class="h-3.5 w-3.5"
 										fill="none"
 										stroke="currentColor"
 										viewBox="0 0 24 24"
-										stroke-width="2"
+										stroke-width="1.5"
 									>
-										<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
+										/>
 									</svg>
-									Reasoning
-									{#if thinkingBudgetEnabled}
-										<span class="font-mono text-[var(--color-accent)]">
-											{thinkingBudgetValue.toLocaleString()}
-										</span>
-									{/if}
+									Plan
 								</button>
-								{#if reasoningOpen}
-									<div
-										class="mt-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 py-2"
-									>
-										<div class="flex items-center gap-3">
-											<label class="flex items-center gap-2">
-												<input
-													type="checkbox"
-													bind:checked={thinkingBudgetEnabled}
-													class="accent-[var(--color-accent)]"
-												/>
-												<span class="text-xs text-[var(--color-text-muted)]">Thinking Budget</span>
-											</label>
-											{#if thinkingBudgetEnabled}
-												<span class="font-mono text-xs font-medium text-[var(--color-text-primary)]"
-													>{thinkingBudgetValue.toLocaleString()}</span
-												>
-												<input
-													type="range"
-													bind:value={thinkingBudgetValue}
-													min={1024}
-													max={32768}
-													step={256}
-													class="sampling-range flex-1"
-												/>
-											{:else}
-												<span class="text-xs text-[var(--color-text-muted)]">Disabled</span>
-											{/if}
-										</div>
-									</div>
-								{/if}
 							</div>
 						{/snippet}
 					</ChatPanel>
@@ -762,6 +751,167 @@
 					</div>
 				{/if}
 			</div>
+
+			<!-- Right panel: Controls (chat tab only, wide screens) -->
+			{#if activeTab === 'chat'}
+				<div
+					class="hidden w-[220px] shrink-0 flex-col overflow-y-auto border-l border-[var(--color-border)] bg-[var(--color-elevated)] xl:flex"
+				>
+					<!-- Plan toggle -->
+					<div class="border-b border-[var(--color-border)] px-3 py-3">
+						<button
+							onclick={() => (planEnabled = !planEnabled)}
+							class="flex w-full items-center justify-between rounded px-2 py-1.5 text-xs font-medium transition-colors {planEnabled
+								? 'bg-[var(--color-accent-subtle,var(--color-surface))] text-[var(--color-accent)]'
+								: 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-text-secondary)]'}"
+						>
+							<span class="flex items-center gap-1.5">
+								<svg
+									class="h-3.5 w-3.5"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+									stroke-width="1.5"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
+									/>
+								</svg>
+								Plan
+							</span>
+							<span
+								class="rounded px-1.5 py-0.5 text-[10px] font-medium {planEnabled
+									? 'bg-[var(--color-accent)] text-white'
+									: 'bg-[var(--color-surface)] text-[var(--color-text-muted)]'}"
+							>
+								{planEnabled ? 'ON' : 'OFF'}
+							</span>
+						</button>
+					</div>
+
+					<!-- Reasoning budget -->
+					<div class="border-b border-[var(--color-border)] px-3 py-3">
+						<button
+							onclick={() => (thinkingBudgetEnabled = !thinkingBudgetEnabled)}
+							class="flex w-full items-center justify-between rounded px-2 py-1.5 text-xs font-medium transition-colors {thinkingBudgetEnabled
+								? 'bg-[var(--color-accent-subtle,var(--color-surface))] text-[var(--color-accent)]'
+								: 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-text-secondary)]'}"
+						>
+							<span class="flex items-center gap-1.5">
+								<svg
+									class="h-3.5 w-3.5"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+									stroke-width="1.5"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
+									/>
+								</svg>
+								Reasoning
+							</span>
+							<span
+								class="rounded px-1.5 py-0.5 text-[10px] font-medium {thinkingBudgetEnabled
+									? 'bg-[var(--color-accent)] text-white'
+									: 'bg-[var(--color-surface)] text-[var(--color-text-muted)]'}"
+							>
+								{thinkingBudgetEnabled ? 'ON' : 'OFF'}
+							</span>
+						</button>
+						{#if thinkingBudgetEnabled}
+							<div class="mt-2 px-2">
+								<div class="flex items-baseline justify-between">
+									<span class="text-xs text-[var(--color-text-muted)]">Budget</span>
+									<span class="font-mono text-xs text-[var(--color-text-primary)]">
+										{thinkingBudgetValue.toLocaleString()}
+									</span>
+								</div>
+								<input
+									type="range"
+									bind:value={thinkingBudgetValue}
+									min={1024}
+									max={32768}
+									step={256}
+									class="sampling-range mt-1 w-full"
+								/>
+							</div>
+						{/if}
+					</div>
+
+					<!-- Processes -->
+					{#if runningProcesses.length > 0}
+						<div class="border-b border-[var(--color-border)] px-3 py-3">
+							<span
+								class="mb-2 block text-xs font-medium tracking-wide text-[var(--color-text-muted)] uppercase"
+								>Processes</span
+							>
+							{#each runningProcesses as proc}
+								<div class="mb-1 flex items-center justify-between rounded px-2 py-1 text-xs">
+									<span
+										class="flex items-center gap-1.5 truncate text-[var(--color-text-secondary)]"
+									>
+										<span
+											class="h-1.5 w-1.5 rounded-full {proc.running
+												? 'bg-emerald-400'
+												: 'bg-[var(--color-text-muted)]'}"
+										></span>
+										<span class="truncate" title={proc.command}
+											>{proc.command.length > 20
+												? proc.command.slice(0, 20) + '...'
+												: proc.command}</span
+										>
+									</span>
+									<button
+										onclick={() => killProcess(proc.id)}
+										class="shrink-0 text-[var(--color-text-muted)] hover:text-red-400"
+										title="Stop process"
+									>
+										&#x2715;
+									</button>
+								</div>
+							{/each}
+						</div>
+					{/if}
+
+					<!-- Sampling parameters -->
+					<div class="px-3 py-3">
+						<span
+							class="mb-3 block text-xs font-medium tracking-wide text-[var(--color-text-muted)] uppercase"
+							>Sampling</span
+						>
+						{#each [{ label: 'Temp', value: temperature, min: 0, max: 2, step: 0.05, fmt: (v: number) => v.toFixed(2), set: (v: number) => (temperature = v) }, { label: 'Top-P', value: top_p, min: 0, max: 1, step: 0.05, fmt: (v: number) => v.toFixed(2), set: (v: number) => (top_p = v) }, { label: 'Top-K', value: top_k, min: 0, max: 200, step: 1, fmt: (v: number) => String(v), set: (v: number) => (top_k = v) }, { label: 'Min-P', value: min_p, min: 0, max: 1, step: 0.01, fmt: (v: number) => v.toFixed(2), set: (v: number) => (min_p = v) }, { label: 'Rep.Pen', value: repeat_penalty, min: 1, max: 2, step: 0.05, fmt: (v: number) => v.toFixed(2), set: (v: number) => (repeat_penalty = v) }] as param}
+							<div class="mb-2">
+								<div class="flex items-baseline justify-between">
+									<span class="text-xs text-[var(--color-text-muted)]">{param.label}</span>
+									<span class="font-mono text-xs text-[var(--color-text-primary)]"
+										>{param.fmt(param.value)}</span
+									>
+								</div>
+								<input
+									type="range"
+									value={param.value}
+									oninput={(e) => param.set(parseFloat(e.currentTarget.value))}
+									min={param.min}
+									max={param.max}
+									step={param.step}
+									class="sampling-range mt-1 w-full"
+								/>
+							</div>
+						{/each}
+						<button
+							onclick={resetSamplingDefaults}
+							class="mt-2 w-full rounded border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text-secondary)]"
+						>
+							Reset to defaults
+						</button>
+					</div>
+				</div>
+			{/if}
 		</div>
 	</div>
 {/if}

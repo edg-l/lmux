@@ -7,6 +7,8 @@ import { insertProjectLines } from './insert-lines';
 import { listProjectDirectory } from './list-directory';
 import { searchProjectFiles } from './search-files';
 import { runProjectCommand } from './run-command';
+import { startBackgroundProcess } from './start-process';
+import { stopBackgroundProcess } from './stop-process';
 
 export interface ToolDefinition {
 	type: 'function';
@@ -142,7 +144,8 @@ const codingToolDefinitions: ToolDefinition[] = [
 				properties: {
 					pattern: {
 						type: 'string',
-						description: 'Regex pattern to search for (e.g. "function main", "TODO", "import.*react")'
+						description:
+							'Regex pattern to search for (e.g. "function main", "TODO", "import.*react")'
 					},
 					glob: {
 						type: 'string',
@@ -182,6 +185,44 @@ const codingToolDefinitions: ToolDefinition[] = [
 					}
 				},
 				required: ['command']
+			}
+		}
+	},
+	{
+		type: 'function',
+		function: {
+			name: 'start_process',
+			description:
+				'Start a long-running background process (e.g., dev server, file watcher). Returns a process ID. The process runs in the background while you continue working. Use wait_for to wait until the process outputs a specific string (e.g., "listening on port") before returning. Use stop_process to terminate it when done.',
+			parameters: {
+				type: 'object',
+				properties: {
+					command: { type: 'string', description: 'The shell command to run' },
+					wait_for: {
+						type: 'string',
+						description:
+							'Optional string to wait for in output before returning (e.g., "Serving HTTP"). Waits up to 10 seconds.'
+					}
+				},
+				required: ['command']
+			}
+		}
+	},
+	{
+		type: 'function',
+		function: {
+			name: 'stop_process',
+			description:
+				'Stop a background process started with start_process. Returns the remaining output and exit code.',
+			parameters: {
+				type: 'object',
+				properties: {
+					id: {
+						type: 'string',
+						description: 'The process ID returned by start_process (e.g., "bg_1")'
+					}
+				},
+				required: ['id']
 			}
 		}
 	}
@@ -303,6 +344,18 @@ export async function executeTool(
 				project.path
 			);
 			return { result: output, blockedPaths };
+		}
+		case 'start_process': {
+			if (!project) throw new Error('start_process requires a project context');
+			return startBackgroundProcess(
+				args as { command: string; wait_for?: string },
+				project.path,
+				project.id
+			);
+		}
+		case 'stop_process': {
+			if (!project) throw new Error('stop_process requires a project context');
+			return stopBackgroundProcess(args as { id: string });
 		}
 		default:
 			throw new Error(`Unknown tool: ${name}`);

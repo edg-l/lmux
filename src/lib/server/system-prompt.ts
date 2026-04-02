@@ -11,7 +11,9 @@ const AVAILABLE_TOOLS = [
 	'insert_lines',
 	'list_directory',
 	'search_files',
-	'run_command'
+	'run_command',
+	'start_process',
+	'stop_process'
 ];
 
 export const PLANNING_SYSTEM_PROMPT = `You are a planning assistant. Given a user request and a coding project, produce ONLY a numbered step-by-step plan. Do NOT write code or produce any output besides the plan.

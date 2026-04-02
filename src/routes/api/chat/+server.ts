@@ -254,8 +254,11 @@ export const POST: RequestHandler = async ({ request }) => {
 								| undefined;
 							let blockedPaths: string[] = [];
 
-							// Approval flow for run_command
-							if (tc.function.name === 'run_command' && typeof args.command === 'string') {
+							// Approval flow for run_command and start_process
+							if (
+								(tc.function.name === 'run_command' || tc.function.name === 'start_process') &&
+								typeof args.command === 'string'
+							) {
 								const command = args.command;
 								const autoApproved = isCommandApproved(command);
 
