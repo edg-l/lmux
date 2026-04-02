@@ -64,6 +64,7 @@
 
 	// Internal state
 	let expandedThinking = $state<Set<number>>(new Set());
+	let expandedPlans = $state<Set<number>>(new Set());
 	let expandedTools = $state<Set<number>>(new Set());
 	let editingMessageIdx = $state<number | null>(null);
 	let editInput = $state('');
@@ -78,6 +79,16 @@
 			next.add(key);
 		}
 		expandedThinking = next;
+	}
+
+	function togglePlan(key: number) {
+		const next = new Set(expandedPlans);
+		if (next.has(key)) {
+			next.delete(key);
+		} else {
+			next.add(key);
+		}
+		expandedPlans = next;
 	}
 
 	function toggleTool(key: number) {
@@ -110,6 +121,7 @@
 	$effect(() => {
 		void activeConversationId;
 		expandedThinking = new Set();
+		expandedPlans = new Set();
 		expandedTools = new Set();
 		editingMessageIdx = null;
 		editInput = '';
@@ -560,7 +572,8 @@
 									{#if !sb.resolved}
 										<div class="mb-2 flex items-center gap-2">
 											<button
-												onclick={() => onallowpath?.(sb.absolutePaths[i], displayPath, sb.requestId)}
+												onclick={() =>
+													onallowpath?.(sb.absolutePaths[i], displayPath, sb.requestId)}
 												class="rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-emerald-500"
 											>
 												Allow {displayPath}
@@ -588,6 +601,54 @@
 					{@const isWaiting = !msg.content && streaming && idx === messages.length - 1}
 					{@const segments = parseThinking(msg.content || (isWaiting ? '...' : ''))}
 					<div class="max-w-[90%] space-y-2">
+						{#if msg.plan}
+							{@const isLast = idx === messages.length - 1}
+							{@const isPlanExpanded = isLast && streaming ? true : expandedPlans.has(idx)}
+							<div class="rounded-lg border border-violet-500/15 bg-violet-500/5">
+								<button
+									onclick={() => togglePlan(idx)}
+									class="flex w-full items-center gap-2 px-3 py-2 text-left"
+								>
+									<svg
+										class="h-3 w-3 shrink-0 text-violet-400 transition-transform {isPlanExpanded
+											? 'rotate-90'
+											: ''}"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										stroke-width="2"
+									>
+										<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+									</svg>
+									<svg
+										class="h-3 w-3 shrink-0 text-violet-400"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										stroke-width="1.5"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
+										/>
+									</svg>
+									<span class="text-xs font-medium text-violet-400">Plan</span>
+									{#if !isPlanExpanded}
+										<span class="truncate text-xs text-violet-400/50"
+											>{msg.plan.slice(0, 80)}...</span
+										>
+									{/if}
+								</button>
+								{#if isPlanExpanded}
+									<div class="border-t border-violet-500/10 px-3 py-2">
+										<p class="text-xs leading-relaxed whitespace-pre-wrap text-violet-200/60">
+											{msg.plan}
+										</p>
+									</div>
+								{/if}
+							</div>
+						{/if}
 						{#if isWaiting}
 							<div
 								class="flex items-center gap-2 rounded-2xl rounded-bl-sm border border-[var(--color-border)] bg-[var(--color-elevated)] px-4 py-3"

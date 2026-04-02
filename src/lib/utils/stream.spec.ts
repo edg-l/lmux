@@ -114,7 +114,10 @@ describe('processSSEStream – tool_call events', () => {
 			})
 		);
 		expect(calls).toHaveLength(1);
-		expect(calls[0].tc).toEqual({ id: 'tc1', function: { name: 'bash', arguments: '{"cmd":"ls"}' } });
+		expect(calls[0].tc).toEqual({
+			id: 'tc1',
+			function: { name: 'bash', arguments: '{"cmd":"ls"}' }
+		});
 		expect(calls[0].idx).toBe(5);
 	});
 });
@@ -202,11 +205,7 @@ describe('processSSEStream – usage events', () => {
 			dataLine({ type: 'usage', prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 })
 		);
 		const usages: object[] = [];
-		await processSSEStream(
-			response,
-			noSignal,
-			makeCallbacks({ onUsage: (u) => usages.push(u) })
-		);
+		await processSSEStream(response, noSignal, makeCallbacks({ onUsage: (u) => usages.push(u) }));
 		expect(usages).toHaveLength(1);
 		expect(usages[0]).toEqual({ prompt: 10, completion: 20, total: 30 });
 	});
@@ -214,11 +213,7 @@ describe('processSSEStream – usage events', () => {
 	it('defaults missing token fields to 0', async () => {
 		const response = makeResponseFromString(dataLine({ type: 'usage' }));
 		const usages: object[] = [];
-		await processSSEStream(
-			response,
-			noSignal,
-			makeCallbacks({ onUsage: (u) => usages.push(u) })
-		);
+		await processSSEStream(response, noSignal, makeCallbacks({ onUsage: (u) => usages.push(u) }));
 		expect(usages[0]).toEqual({ prompt: 0, completion: 0, total: 0 });
 	});
 });
@@ -271,9 +266,7 @@ describe('processSSEStream – approval_request events', () => {
 		const response = makeResponseFromString(
 			dataLine({ type: 'approval_request', requestId: 'r3', command: 'ls' })
 		);
-		await expect(
-			processSSEStream(response, noSignal, makeCallbacks())
-		).resolves.toBeDefined();
+		await expect(processSSEStream(response, noSignal, makeCallbacks())).resolves.toBeDefined();
 	});
 });
 
@@ -301,9 +294,7 @@ describe('processSSEStream – sandbox_blocked events', () => {
 	});
 
 	it('defaults paths and absolutePaths to [] when absent', async () => {
-		const response = makeResponseFromString(
-			dataLine({ type: 'sandbox_blocked' })
-		);
+		const response = makeResponseFromString(dataLine({ type: 'sandbox_blocked' }));
 		const received: object[] = [];
 		await processSSEStream(
 			response,
@@ -336,9 +327,7 @@ describe('processSSEStream – file_changed events', () => {
 		const response = makeResponseFromString(
 			dataLine({ type: 'file_changed', path: 'x.ts', operation: 'created' })
 		);
-		await expect(
-			processSSEStream(response, noSignal, makeCallbacks())
-		).resolves.toBeDefined();
+		await expect(processSSEStream(response, noSignal, makeCallbacks())).resolves.toBeDefined();
 	});
 });
 
@@ -352,43 +341,108 @@ describe('processSSEStream – error events', () => {
 			dataLine({ type: 'error', message: 'something went wrong' })
 		);
 		const errors: string[] = [];
-		await processSSEStream(
-			response,
-			noSignal,
-			makeCallbacks({ onError: (e) => errors.push(e) })
-		);
+		await processSSEStream(response, noSignal, makeCallbacks({ onError: (e) => errors.push(e) }));
 		expect(errors).toEqual(['something went wrong']);
 	});
 
 	it('falls back to error field when message is absent', async () => {
-		const response = makeResponseFromString(
-			dataLine({ type: 'error', error: 'fallback error' })
-		);
+		const response = makeResponseFromString(dataLine({ type: 'error', error: 'fallback error' }));
 		const errors: string[] = [];
-		await processSSEStream(
-			response,
-			noSignal,
-			makeCallbacks({ onError: (e) => errors.push(e) })
-		);
+		await processSSEStream(response, noSignal, makeCallbacks({ onError: (e) => errors.push(e) }));
 		expect(errors).toEqual(['fallback error']);
 	});
 
 	it('uses "Unknown error" when neither message nor error field present', async () => {
 		const response = makeResponseFromString(dataLine({ type: 'error' }));
 		const errors: string[] = [];
-		await processSSEStream(
-			response,
-			noSignal,
-			makeCallbacks({ onError: (e) => errors.push(e) })
-		);
+		await processSSEStream(response, noSignal, makeCallbacks({ onError: (e) => errors.push(e) }));
 		expect(errors).toEqual(['Unknown error']);
 	});
 
 	it('does not throw when onError callback is absent', async () => {
 		const response = makeResponseFromString(dataLine({ type: 'error', message: 'oops' }));
-		await expect(
-			processSSEStream(response, noSignal, makeCallbacks())
-		).resolves.toBeDefined();
+		await expect(processSSEStream(response, noSignal, makeCallbacks())).resolves.toBeDefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// plan_delta events
+// ---------------------------------------------------------------------------
+
+describe('processSSEStream – plan_delta events', () => {
+	it('calls onPlanDelta with the content field', async () => {
+		const response = makeResponseFromString(
+			dataLine({ type: 'plan_delta', content: '1. Read file' })
+		);
+		const deltas: string[] = [];
+		await processSSEStream(
+			response,
+			noSignal,
+			makeCallbacks({ onPlanDelta: (c) => deltas.push(c) })
+		);
+		expect(deltas).toEqual(['1. Read file']);
+	});
+
+	it('calls onPlanDelta for each chunk in order', async () => {
+		const text =
+			dataLine({ type: 'plan_delta', content: '1. Read' }) +
+			dataLine({ type: 'plan_delta', content: ' the file' });
+		const response = makeResponseFromString(text);
+		const deltas: string[] = [];
+		await processSSEStream(
+			response,
+			noSignal,
+			makeCallbacks({ onPlanDelta: (c) => deltas.push(c) })
+		);
+		expect(deltas).toEqual(['1. Read', ' the file']);
+	});
+
+	it('does not throw when onPlanDelta callback is absent', async () => {
+		const response = makeResponseFromString(dataLine({ type: 'plan_delta', content: 'step' }));
+		await expect(processSSEStream(response, noSignal, makeCallbacks())).resolves.toBeDefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// plan_done events
+// ---------------------------------------------------------------------------
+
+describe('processSSEStream – plan_done events', () => {
+	it('calls onPlanDone with the full plan text', async () => {
+		const fullPlan = '1. Read file\n2. Edit file\n3. Verify';
+		const response = makeResponseFromString(dataLine({ type: 'plan_done', content: fullPlan }));
+		const received: string[] = [];
+		await processSSEStream(
+			response,
+			noSignal,
+			makeCallbacks({ onPlanDone: (c) => received.push(c) })
+		);
+		expect(received).toEqual([fullPlan]);
+	});
+
+	it('does not throw when onPlanDone callback is absent', async () => {
+		const response = makeResponseFromString(dataLine({ type: 'plan_done', content: 'plan text' }));
+		await expect(processSSEStream(response, noSignal, makeCallbacks())).resolves.toBeDefined();
+	});
+
+	it('handles plan_delta followed by plan_done', async () => {
+		const text =
+			dataLine({ type: 'plan_delta', content: '1. Step one' }) +
+			dataLine({ type: 'plan_delta', content: '\n2. Step two' }) +
+			dataLine({ type: 'plan_done', content: '1. Step one\n2. Step two' });
+		const response = makeResponseFromString(text);
+		const deltas: string[] = [];
+		const dones: string[] = [];
+		await processSSEStream(
+			response,
+			noSignal,
+			makeCallbacks({
+				onPlanDelta: (c) => deltas.push(c),
+				onPlanDone: (c) => dones.push(c)
+			})
+		);
+		expect(deltas).toEqual(['1. Step one', '\n2. Step two']);
+		expect(dones).toEqual(['1. Step one\n2. Step two']);
 	});
 });
 

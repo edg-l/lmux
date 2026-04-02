@@ -4,7 +4,11 @@ import { getSetting } from '$lib/server/settings';
 import { getToolDefinitions, executeTool } from '$lib/server/tools';
 import { consumeLlamaStream } from '$lib/server/tools/llama-stream';
 import type { ToolCall } from '$lib/server/tools/llama-stream';
-import { resolveSystemPrompt } from '$lib/server/system-prompt';
+import {
+	resolveSystemPrompt,
+	PLANNING_SYSTEM_PROMPT,
+	buildPlanInjectedPrompt
+} from '$lib/server/system-prompt';
 import {
 	requestApproval,
 	cleanupApproval,
@@ -52,6 +56,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		tools_enabled?: boolean;
 		model_id?: number | null;
 		project_id?: number | null;
+		plan_enabled?: boolean;
 	};
 
 	if (!body.messages || !Array.isArray(body.messages)) {
@@ -82,8 +87,65 @@ export const POST: RequestHandler = async ({ request }) => {
 					}
 					return m;
 				});
-				const messages: ChatMessage[] = systemPrompt
-					? [{ role: 'system', content: systemPrompt }, ...normalized]
+				let effectiveSystemPrompt = systemPrompt;
+
+				// Planning pass: when plan_enabled and project_id, generate a plan first
+				if (body.plan_enabled && body.project_id) {
+					const planMessages: ChatMessage[] = [
+						{ role: 'system', content: PLANNING_SYSTEM_PROMPT },
+						...normalized
+					];
+
+					const planRes = await fetch(`http://localhost:${state.port}/v1/chat/completions`, {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							messages: planMessages,
+							stream: true,
+							stream_options: { include_usage: true },
+							...(body.sampling && {
+								temperature: body.sampling.temperature,
+								top_p: body.sampling.top_p,
+								top_k: body.sampling.top_k,
+								min_p: body.sampling.min_p,
+								repeat_penalty: body.sampling.repeat_penalty
+							})
+						})
+					});
+
+					if (planRes.ok && planRes.body) {
+						const planResult = await consumeLlamaStream(planRes.body);
+						const planText = planResult.content;
+
+						// Emit plan chunks for UI streaming
+						for (let i = 0; i < planText.length; i += CHUNK_SIZE) {
+							const chunk = planText.slice(i, i + CHUNK_SIZE);
+							controller.enqueue(
+								new TextEncoder().encode(
+									sseEvent(JSON.stringify({ type: 'plan_delta', content: chunk }))
+								)
+							);
+						}
+
+						// Emit plan_done with full text
+						controller.enqueue(
+							new TextEncoder().encode(
+								sseEvent(JSON.stringify({ type: 'plan_done', content: planText }))
+							)
+						);
+
+						// Inject plan into the coding system prompt
+						if (planText.trim()) {
+							effectiveSystemPrompt = buildPlanInjectedPrompt(
+								effectiveSystemPrompt ?? '',
+								planText
+							);
+						}
+					}
+				}
+
+				const messages: ChatMessage[] = effectiveSystemPrompt
+					? [{ role: 'system', content: effectiveSystemPrompt }, ...normalized]
 					: [...normalized];
 				let reachedLimit = true;
 
@@ -287,16 +349,11 @@ export const POST: RequestHandler = async ({ request }) => {
 								);
 
 								// Wait for user to allow or dismiss
-								const sandboxResult =
-									await requestSandboxResolution(sandboxRequestId);
+								const sandboxResult = await requestSandboxResolution(sandboxRequestId);
 								if (sandboxResult === 'allowed') {
 									// Re-run the command with the new path exception
 									try {
-										const retryResult = await executeTool(
-											tc.function.name,
-											args,
-											project
-										);
+										const retryResult = await executeTool(tc.function.name, args, project);
 										toolResult = retryResult.result;
 										toolError = retryResult.error ?? false;
 										fileChanged = retryResult.fileChanged;

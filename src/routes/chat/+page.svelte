@@ -11,11 +11,7 @@
 		exportChat as exportChatUtil,
 		prepareMessagesForApi
 	} from '$lib/utils/chat';
-	import {
-		getServerInfo,
-		getServerLogs,
-		connectServerInfo
-	} from '$lib/stores/server-info.svelte';
+	import { getServerInfo, getServerLogs, connectServerInfo } from '$lib/stores/server-info.svelte';
 
 	interface Conversation {
 		id: number;
@@ -232,7 +228,6 @@
 			toolsEnabled = !toolsEnabled;
 		}
 	}
-
 
 	async function loadSamplingParams(modelId: number) {
 		try {

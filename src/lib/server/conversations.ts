@@ -25,6 +25,7 @@ interface MessageRow {
 	tool_call_id: string | null;
 	tool_calls: string | null;
 	images: string | null;
+	plan: string | null;
 	created_at: string;
 }
 
@@ -42,6 +43,7 @@ export interface Message {
 	tool_call_id: string | null;
 	tool_calls: ToolCallData[] | null;
 	images: ImageData[] | null;
+	plan: string | null;
 	created_at: string;
 }
 
@@ -88,11 +90,12 @@ export function addMessage(
 	tokenCount?: number,
 	toolCallId?: string,
 	toolCalls?: string,
-	images?: string
+	images?: string,
+	plan?: string
 ): number {
 	const result = execute(
-		`INSERT INTO messages (conversation_id, role, content, token_count, tool_call_id, tool_calls, images)
-		 VALUES ($conversation_id, $role, $content, $token_count, $tool_call_id, $tool_calls, $images)`,
+		`INSERT INTO messages (conversation_id, role, content, token_count, tool_call_id, tool_calls, images, plan)
+		 VALUES ($conversation_id, $role, $content, $token_count, $tool_call_id, $tool_calls, $images, $plan)`,
 		{
 			$conversation_id: conversationId,
 			$role: role,
@@ -100,7 +103,8 @@ export function addMessage(
 			$token_count: tokenCount ?? null,
 			$tool_call_id: toolCallId ?? null,
 			$tool_calls: toolCalls ?? null,
-			$images: images ?? null
+			$images: images ?? null,
+			$plan: plan ?? null
 		}
 	);
 

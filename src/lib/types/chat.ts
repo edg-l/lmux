@@ -44,6 +44,7 @@ export interface Message {
 	approval?: ApprovalRequest;
 	sandboxBlocked?: SandboxBlocked;
 	images?: Array<{ name: string; dataUrl: string; base64?: string }>;
+	plan?: string;
 }
 
 export interface PendingToolMessage {

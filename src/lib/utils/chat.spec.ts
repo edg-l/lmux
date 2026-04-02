@@ -33,9 +33,7 @@ describe('enrichToolMessages', () => {
 			{
 				role: 'assistant',
 				content: '',
-				tool_calls: [
-					{ id: 'tc1', function: { name: 'read_file', arguments: '{"path":"foo.ts"}' } }
-				]
+				tool_calls: [{ id: 'tc1', function: { name: 'read_file', arguments: '{"path":"foo.ts"}' } }]
 			},
 			{ role: 'tool', content: 'file contents', tool_call_id: 'tc1' }
 		];
@@ -47,9 +45,7 @@ describe('enrichToolMessages', () => {
 	});
 
 	it('falls back to "tool" when tool_call_id has no matching tool_call', () => {
-		const msgs: Message[] = [
-			{ role: 'tool', content: 'result', tool_call_id: 'unknown-id' }
-		];
+		const msgs: Message[] = [{ role: 'tool', content: 'result', tool_call_id: 'unknown-id' }];
 		const result = enrichToolMessages(msgs);
 		expect(result[0].toolName).toBe('tool');
 		expect(result[0].toolArgs).toBeUndefined();
@@ -415,26 +411,20 @@ describe('prepareMessagesForApi', () => {
 	});
 
 	it('sets role to "tool" and includes tool_call_id when present', () => {
-		const msgs: Message[] = [
-			{ role: 'tool', content: 'result', tool_call_id: 'tc42' }
-		];
+		const msgs: Message[] = [{ role: 'tool', content: 'result', tool_call_id: 'tc42' }];
 		const result = prepareMessagesForApi(msgs);
 		expect(result[0].role).toBe('tool');
 		expect(result[0].tool_call_id).toBe('tc42');
 	});
 
 	it('does not include tool_calls key when tool_calls is null', () => {
-		const msgs: Message[] = [
-			{ role: 'assistant', content: 'response', tool_calls: null }
-		];
+		const msgs: Message[] = [{ role: 'assistant', content: 'response', tool_calls: null }];
 		const result = prepareMessagesForApi(msgs);
 		expect('tool_calls' in result[0]).toBe(false);
 	});
 
 	it('does not include tool_call_id key when tool_call_id is null', () => {
-		const msgs: Message[] = [
-			{ role: 'tool', content: 'result', tool_call_id: null }
-		];
+		const msgs: Message[] = [{ role: 'tool', content: 'result', tool_call_id: null }];
 		const result = prepareMessagesForApi(msgs);
 		expect('tool_call_id' in result[0]).toBe(false);
 	});

@@ -4,6 +4,38 @@ import { userInfo } from 'node:os';
 import { getSetting } from './settings';
 import { getModel } from './models';
 
+const AVAILABLE_TOOLS = [
+	'read_file',
+	'write_file',
+	'edit_file',
+	'insert_lines',
+	'list_directory',
+	'search_files',
+	'run_command'
+];
+
+export const PLANNING_SYSTEM_PROMPT = `You are a planning assistant. Given a user request and a coding project, produce ONLY a numbered step-by-step plan. Do NOT write code or produce any output besides the plan.
+
+Rules:
+- Each step must be ONE sentence describing WHAT to do, not HOW (no code snippets).
+- Use IF/ELSE for conditional steps.
+- Use REPEAT/UNTIL for steps that may need retrying.
+- End with VERIFY steps that describe what to check. If verification fails, describe what to do next.
+- Keep the plan concise. Do not explain reasoning.
+
+Available tools: ${AVAILABLE_TOOLS.join(', ')}
+`;
+
+export function buildPlanInjectedPrompt(codingPrompt: string, planText: string): string {
+	if (!planText.trim()) return codingPrompt;
+	return `${codingPrompt}
+
+## Your Plan
+Follow this plan step by step. After completing all steps, summarize what you did.
+
+${planText}`;
+}
+
 const CODING_SYSTEM_PROMPT = `You are a coding assistant working on a project.
 
 Project: {{project_name}}

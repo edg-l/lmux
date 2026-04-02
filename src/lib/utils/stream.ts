@@ -3,7 +3,12 @@ import type { ToolCallData, PendingToolMessage, TokenUsage, DangerSegment } from
 export interface StreamCallbacks {
 	onDelta: (content: string) => void;
 	onToolCall: (tc: ToolCallData, statusIdx: number) => void;
-	onToolResult: (id: string, content: string, statusIdx: number | undefined, error?: boolean) => void;
+	onToolResult: (
+		id: string,
+		content: string,
+		statusIdx: number | undefined,
+		error?: boolean
+	) => void;
 	getAssistantContent: (toolCallCount: number) => string;
 	onUsage: (usage: TokenUsage) => void;
 	onApprovalRequest?: (data: {
@@ -18,6 +23,8 @@ export interface StreamCallbacks {
 		absolutePaths: string[];
 	}) => void;
 	onFileChanged?: (data: { path: string; operation: string }) => void;
+	onPlanDelta?: (content: string) => void;
+	onPlanDone?: (content: string) => void;
 	onError?: (error: string) => void;
 	getMessageCount: () => number;
 }
@@ -94,6 +101,10 @@ export async function processSSEStream(
 						paths: parsed.paths ?? [],
 						absolutePaths: parsed.absolutePaths ?? []
 					});
+				} else if (parsed.type === 'plan_delta' && callbacks.onPlanDelta) {
+					callbacks.onPlanDelta(parsed.content);
+				} else if (parsed.type === 'plan_done' && callbacks.onPlanDone) {
+					callbacks.onPlanDone(parsed.content);
 				} else if (parsed.type === 'file_changed' && callbacks.onFileChanged) {
 					callbacks.onFileChanged({
 						path: parsed.path,

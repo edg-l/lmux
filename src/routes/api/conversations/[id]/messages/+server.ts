@@ -18,6 +18,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		toolCallId?: string;
 		toolCalls?: string;
 		images?: string;
+		plan?: string;
 	};
 
 	const validRoles = new Set(['user', 'assistant', 'tool', 'system']);
@@ -32,7 +33,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		body.tokenCount,
 		body.toolCallId,
 		body.toolCalls,
-		body.images
+		body.images,
+		body.plan
 	);
 	return json({ id }, { status: 201 });
 };

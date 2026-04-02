@@ -51,6 +51,10 @@
 	// Session list ref
 	let sessionListComponent: SessionList | undefined = $state();
 
+	// Planning state
+	let planEnabled = $state(false);
+	let planText = $state('');
+
 	// Reasoning budget state
 	let thinkingBudgetEnabled = $state(false);
 	let thinkingBudgetValue = $state(4096);
@@ -129,9 +133,9 @@
 		}
 	}
 
-
 	async function selectConversation(id: number) {
 		activeConversationId = id;
+		planText = '';
 		changedFiles = new Map();
 		activeTab = 'chat';
 		try {
@@ -149,6 +153,7 @@
 		activeConversationId = null;
 		messages = [];
 		input = '';
+		planText = '';
 		tokenUsage = null;
 		changedFiles = new Map();
 		activeTab = 'chat';
@@ -176,7 +181,7 @@
 		conversationId: number,
 		role: string,
 		content: string,
-		opts?: { toolCallId?: string; toolCalls?: string; tokenCount?: number }
+		opts?: { toolCallId?: string; toolCalls?: string; tokenCount?: number; plan?: string }
 	): Promise<number | null> {
 		try {
 			const res = await fetch(`/api/conversations/${conversationId}/messages`, {
@@ -187,7 +192,8 @@
 					content,
 					...(opts?.toolCallId && { toolCallId: opts.toolCallId }),
 					...(opts?.toolCalls && { toolCalls: opts.toolCalls }),
-					...(opts?.tokenCount != null && { tokenCount: opts.tokenCount })
+					...(opts?.tokenCount != null && { tokenCount: opts.tokenCount }),
+					...(opts?.plan && { plan: opts.plan })
 				})
 			});
 			if (res.ok) {
@@ -280,6 +286,7 @@
 		await saveMessage(conversationId, 'user', text);
 		messages = [...messages, { role: 'assistant', content: '' }];
 
+		planText = '';
 		streaming = true;
 		const controller = new AbortController();
 		abortController = controller;
@@ -297,7 +304,8 @@
 					},
 					tools_enabled: true,
 					model_id: serverInfo?.modelId ?? null,
-					project_id: projectId
+					project_id: projectId,
+					plan_enabled: planEnabled
 				}),
 				signal: controller.signal
 			});
@@ -392,6 +400,16 @@
 						}
 					];
 				},
+				onPlanDelta: (content) => {
+					planText += content;
+				},
+				onPlanDone: (content) => {
+					planText = content;
+					// Store plan text on the current assistant message
+					messages = messages.map((m, i) =>
+						i === messages.length - 1 && m.role === 'assistant' ? { ...m, plan: content } : m
+					);
+				},
 				onFileChanged: (data) => {
 					const newChanged = new Map(changedFiles);
 					newChanged.set(data.path, data.operation as 'created' | 'modified');
@@ -415,7 +433,9 @@
 
 			const lastMsg = messages[messages.length - 1];
 			if (lastMsg?.role === 'assistant' && lastMsg.content) {
-				await saveMessage(conversationId, 'assistant', lastMsg.content);
+				await saveMessage(conversationId, 'assistant', lastMsg.content, {
+					...(lastMsg.plan && { plan: lastMsg.plan })
+				});
 			}
 		} catch {
 			messages = messages.map((m, i) =>
@@ -657,6 +677,30 @@
 					>
 						{#snippet inputSuffix()}
 							<div class="mx-auto mt-2 max-w-3xl">
+								<div class="mb-1 flex items-center gap-3">
+									<button
+										onclick={() => (planEnabled = !planEnabled)}
+										class="flex items-center gap-1 text-xs transition-colors {planEnabled
+											? 'text-[var(--color-accent)]'
+											: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
+										title={planEnabled ? 'Planning enabled' : 'Planning disabled'}
+									>
+										<svg
+											class="h-3.5 w-3.5"
+											fill="none"
+											stroke="currentColor"
+											viewBox="0 0 24 24"
+											stroke-width="1.5"
+										>
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
+											/>
+										</svg>
+										Plan
+									</button>
+								</div>
 								<button
 									onclick={() => (reasoningOpen = !reasoningOpen)}
 									class="flex items-center gap-1 text-xs text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
