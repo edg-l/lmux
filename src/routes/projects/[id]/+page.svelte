@@ -259,7 +259,13 @@
 		conversationId: number,
 		role: string,
 		content: string,
-		opts?: { toolCallId?: string; toolCalls?: string; tokenCount?: number; plan?: string }
+		opts?: {
+			toolCallId?: string;
+			toolCalls?: string;
+			tokenCount?: number;
+			plan?: string;
+			images?: Array<{ name: string; dataUrl: string }>;
+		}
 	): Promise<number | null> {
 		try {
 			const res = await fetch(`/api/conversations/${conversationId}/messages`, {
@@ -271,7 +277,8 @@
 					...(opts?.toolCallId && { toolCallId: opts.toolCallId }),
 					...(opts?.toolCalls && { toolCalls: opts.toolCalls }),
 					...(opts?.tokenCount != null && { tokenCount: opts.tokenCount }),
-					...(opts?.plan && { plan: opts.plan })
+					...(opts?.plan && { plan: opts.plan }),
+					...(opts?.images && { images: JSON.stringify(opts.images) })
 				})
 			});
 			if (res.ok) {
@@ -437,10 +444,12 @@
 						}
 					];
 				},
-				onToolResult: (id, content, statusIdx, error) => {
+				onToolResult: (id, content, statusIdx, error, images) => {
 					if (statusIdx !== undefined) {
 						messages = messages.map((m, i) =>
-							i === statusIdx ? { ...m, content, toolStatus: 'done' as const, toolError: error } : m
+							i === statusIdx
+								? { ...m, content, toolStatus: 'done' as const, toolError: error, images }
+								: m
 						);
 					}
 					// Add assistant placeholder so thinking dots show while model processes
@@ -529,7 +538,8 @@
 			for (const tm of pendingToolMessages) {
 				await saveMessage(conversationId, tm.role, tm.content, {
 					toolCalls: tm.toolCalls,
-					toolCallId: tm.toolCallId
+					toolCallId: tm.toolCallId,
+					images: tm.images
 				});
 			}
 

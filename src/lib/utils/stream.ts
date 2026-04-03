@@ -7,7 +7,8 @@ export interface StreamCallbacks {
 		id: string,
 		content: string,
 		statusIdx: number | undefined,
-		error?: boolean
+		error?: boolean,
+		images?: Array<{ name: string; dataUrl: string }>
 	) => void;
 	getAssistantContent: (toolCallCount: number) => string;
 	onUsage: (usage: TokenUsage) => void;
@@ -66,7 +67,7 @@ export async function processSSEStream(
 					callbacks.onToolCall(tc, statusIdx);
 				} else if (parsed.type === 'tool_result') {
 					const statusIdx = toolStatusIndices.get(parsed.id);
-					callbacks.onToolResult(parsed.id, parsed.content, statusIdx, parsed.error);
+					callbacks.onToolResult(parsed.id, parsed.content, statusIdx, parsed.error, parsed.images);
 
 					if (currentToolCalls.length > 0) {
 						const assistantContent = callbacks.getAssistantContent(currentToolCalls.length);
@@ -81,7 +82,8 @@ export async function processSSEStream(
 					pendingToolMessages.push({
 						role: 'tool',
 						content: parsed.content,
-						toolCallId: parsed.id
+						toolCallId: parsed.id,
+						images: parsed.images
 					});
 				} else if (parsed.type === 'usage') {
 					callbacks.onUsage({

@@ -12,6 +12,7 @@ import { stopBackgroundProcess } from './stop-process';
 import { listBackgroundProcesses } from './list-processes';
 import { solveMath } from './solve-math';
 import { runCode } from './run-code';
+import { renderHtml } from './render-html';
 import { validateNoteFilename, readNote, writeNote, deleteNote, listNotes } from './memory';
 
 export interface ToolDefinition {
@@ -32,6 +33,7 @@ export interface ToolResult {
 	error?: boolean;
 	fileChanged?: { path: string; operation: 'created' | 'modified' };
 	blockedPaths?: string[];
+	images?: Array<{ name: string; dataUrl: string }>;
 }
 
 const codingToolDefinitions: ToolDefinition[] = [
@@ -355,7 +357,7 @@ export function getToolDefinitions(
 			function: {
 				name: 'solve_math',
 				description:
-					'Execute Python code with sympy for symbolic math: equations, calculus, algebra, linear algebra, etc. Print results to stdout. For symbolic results, also print LaTeX with print(latex(expr)) so you can render it in your response. Example: "from sympy import *\\nx = symbols(\'x\')\\nresult = solve(x**2 - 4, x)\\nprint(result)\\nprint(latex(result))"',
+					"Execute Python code with sympy for symbolic math: equations, calculus, algebra, linear algebra, etc. Print results to stdout. For symbolic results, also print LaTeX with print(latex(expr)) so you can render it in your response. matplotlib is also available for plotting. Save plots with plt.savefig('plot.png'). Images are displayed to the user. Example: \"from sympy import *\\nx = symbols('x')\\nresult = solve(x**2 - 4, x)\\nprint(result)\\nprint(latex(result))\"",
 				parameters: {
 					type: 'object',
 					properties: {
@@ -374,7 +376,7 @@ export function getToolDefinitions(
 			function: {
 				name: 'run_code',
 				description:
-					'Execute a code snippet and return its output. Use this to run Python or bash code for calculations, data processing, testing logic, or verifying answers. The code runs in an isolated sandbox.',
+					"Execute a code snippet and return its output. Use this to run Python or bash code for calculations, data processing, testing logic, or verifying answers. The code runs in an isolated sandbox. You can generate charts and plots by saving images to the current directory (e.g., import matplotlib.pyplot as plt; plt.savefig('chart.png')). matplotlib is pre-installed for Python. Supported: png, jpg, svg. Images are displayed to the user.",
 				parameters: {
 					type: 'object',
 					properties: {
@@ -398,6 +400,25 @@ export function getToolDefinitions(
 						}
 					},
 					required: ['language', 'code']
+				}
+			}
+		},
+		{
+			type: 'function',
+			function: {
+				name: 'render_html',
+				description:
+					"Render an interactive HTML page in the chat. Write a complete HTML document with <html>, <head>, <body>. A UI toolkit and libraries are pre-loaded:\n\nCSS Toolkit (dark theme): .btn (styled button), .slider (range input), .input (text input), .select (dropdown), .flex, .flex-col, .grid, .gap-1 to .gap-4, .p-1 to .p-4, .m-1 to .m-4, .text-center, .w-full, .text-sm/.text-lg/.text-xl, .font-bold. CSS vars: --accent, --bg, --fg, --border, --surface.\n\nChart.js: <canvas id='chart'> + new Chart(document.getElementById('chart'), { type: 'bar'|'line'|'pie'|'doughnut', data: { labels: [...], datasets: [{ label, data: [...] }] } })\n\nThree.js: const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(75, w/h, 0.1, 1000); const renderer = new THREE.WebGLRenderer(); document.body.appendChild(renderer.domElement);\n\nAll scripts/styles must be inline. No relative URLs work in the sandbox.",
+				parameters: {
+					type: 'object',
+					properties: {
+						html: {
+							type: 'string',
+							description:
+								'Complete HTML document to render. Include all CSS in <style> and JS in <script> tags.'
+						}
+					},
+					required: ['html']
 				}
 			}
 		}
@@ -500,11 +521,11 @@ export async function executeTool(
 			return listBackgroundProcesses(project.id);
 		}
 		case 'solve_math': {
-			const result = await solveMath(args as { code: string });
-			return { result };
+			const { output, images } = await solveMath(args as { code: string });
+			return { result: output, images };
 		}
 		case 'run_code': {
-			const { output } = await runCode(
+			const { output, images } = await runCode(
 				args as {
 					language: string;
 					code: string;
@@ -513,7 +534,11 @@ export async function executeTool(
 					max_length?: number;
 				}
 			);
-			return { result: output };
+			return { result: output, images };
+		}
+		case 'render_html': {
+			const res = renderHtml(args as { html: string });
+			return { result: res.result, error: res.error };
 		}
 		case 'memory_read': {
 			const filename = args.filename as string | undefined;

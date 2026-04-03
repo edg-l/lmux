@@ -78,7 +78,8 @@ const TOOL_LABELS: Record<string, string> = {
 	web_search: 'Searching',
 	memory_read: 'Reading memory',
 	memory_write: 'Saving memory',
-	memory_delete: 'Deleting memory'
+	memory_delete: 'Deleting memory',
+	render_html: 'HTML Demo'
 };
 
 export function getToolLabel(toolName: string | undefined): string {
@@ -133,6 +134,7 @@ export function getToolSummary(toolName: string | undefined, toolArgs: string | 
 		if (toolName === 'memory_read') return 'list';
 		if (toolName === 'memory_write' && args.filename) return args.filename;
 		if (toolName === 'memory_delete' && args.filename) return args.filename;
+		if (toolName === 'render_html') return 'interactive demo';
 		return '';
 	} catch {
 		return '';

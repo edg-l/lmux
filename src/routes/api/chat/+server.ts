@@ -379,6 +379,7 @@ export const POST: RequestHandler = async ({ request }) => {
 								| { path: string; operation: 'created' | 'modified'; oldContent?: string }
 								| undefined;
 							let blockedPaths: string[] = [];
+							let toolImages: Array<{ name: string; dataUrl: string }> = [];
 
 							// Approval flow for run_command and start_process
 							if (
@@ -427,6 +428,7 @@ export const POST: RequestHandler = async ({ request }) => {
 											toolError = execResult.error ?? false;
 											fileChanged = execResult.fileChanged;
 											blockedPaths = execResult.blockedPaths ?? [];
+											toolImages = execResult.images ?? [];
 										} catch (e) {
 											toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
 											toolError = true;
@@ -440,6 +442,7 @@ export const POST: RequestHandler = async ({ request }) => {
 										toolError = execResult.error ?? false;
 										fileChanged = execResult.fileChanged;
 										blockedPaths = execResult.blockedPaths ?? [];
+										toolImages = execResult.images ?? [];
 									} catch (e) {
 										toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
 										toolError = true;
@@ -485,6 +488,7 @@ export const POST: RequestHandler = async ({ request }) => {
 										toolResult = execResult.result;
 										toolError = execResult.error ?? false;
 										fileChanged = execResult.fileChanged;
+										toolImages = execResult.images ?? [];
 									} catch (e) {
 										toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
 										toolError = true;
@@ -496,6 +500,7 @@ export const POST: RequestHandler = async ({ request }) => {
 									toolResult = execResult.result;
 									toolError = execResult.error ?? false;
 									fileChanged = execResult.fileChanged;
+									toolImages = execResult.images ?? [];
 								} catch (e) {
 									toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
 									toolError = true;
@@ -531,6 +536,7 @@ export const POST: RequestHandler = async ({ request }) => {
 										toolResult = retryResult.result;
 										toolError = retryResult.error ?? false;
 										fileChanged = retryResult.fileChanged;
+										toolImages = retryResult.images ?? [];
 										// Don't check blockedPaths again to avoid infinite loop
 									} catch (e) {
 										toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
@@ -562,7 +568,8 @@ export const POST: RequestHandler = async ({ request }) => {
 											id: tc.id,
 											name: tc.function.name,
 											content: toolResult,
-											error: toolError
+											error: toolError,
+											...(toolImages.length > 0 && { images: toolImages })
 										})
 									)
 								)

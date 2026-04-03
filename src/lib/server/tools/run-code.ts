@@ -1,5 +1,6 @@
 import { mkdirSync, rmSync } from 'node:fs';
 import { buildSandboxedCommand } from '../sandbox';
+import { collectImages } from './collect-images';
 
 const MAX_TIMEOUT = 120_000;
 const DEFAULT_TIMEOUT = 30_000;
@@ -12,18 +13,21 @@ export async function runCode(args: {
 	timeout?: number;
 	offset?: number;
 	max_length?: number;
-}): Promise<{ output: string }> {
+}): Promise<{ output: string; images: Array<{ name: string; dataUrl: string }> }> {
 	const lang = args.language?.toLowerCase();
 	if (!['python', 'bash', 'sh'].includes(lang)) {
-		return { output: 'Error: language must be one of: python, bash, sh' };
+		return { output: 'Error: language must be one of: python, bash, sh', images: [] };
 	}
 
 	if (!args.code || !args.code.trim()) {
-		return { output: 'Error: no code provided' };
+		return { output: 'Error: no code provided', images: [] };
 	}
 
 	if (args.code.length > MAX_CODE_LENGTH) {
-		return { output: `Error: code too long (max ${MAX_CODE_LENGTH.toLocaleString()} characters)` };
+		return {
+			output: `Error: code too long (max ${MAX_CODE_LENGTH.toLocaleString()} characters)`,
+			images: []
+		};
 	}
 
 	const timeoutMs = Math.min(Math.max((args.timeout ?? 30) * 1000, 1000), MAX_TIMEOUT);
@@ -42,14 +46,15 @@ export async function runCode(args: {
 
 		await Bun.write(filePath, args.code);
 
-		const command = isPython ? `python3 ${filename}` : `bash ${filename}`;
+		const command = isPython ? `uv run --with matplotlib python3 ${filename}` : `bash ${filename}`;
 		const { args: cmdArgs } = buildSandboxedCommand(tempDir, command);
 
 		const startTime = performance.now();
 		const proc = Bun.spawn(cmdArgs, {
 			cwd: tempDir,
 			stdout: 'pipe',
-			stderr: 'pipe'
+			stderr: 'pipe',
+			env: { ...process.env, MPLCONFIGDIR: tempDir }
 		});
 
 		let killed = false;
@@ -95,7 +100,12 @@ export async function runCode(args: {
 				sliced + `\n[truncated, ${totalBytes} bytes total. Use offset/max_length to read more]`;
 		}
 
-		return { output: finalOutput };
+		const images = collectImages(tempDir);
+		if (images.length > 0) {
+			finalOutput += `\n[${images.length} image(s) generated]`;
+		}
+
+		return { output: finalOutput, images };
 	} finally {
 		try {
 			rmSync(tempDir, { recursive: true, force: true });

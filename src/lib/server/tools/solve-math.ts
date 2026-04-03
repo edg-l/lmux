@@ -1,18 +1,25 @@
+import { mkdirSync, rmSync } from 'node:fs';
 import { buildSandboxedCommand } from '../sandbox';
+import { collectImages } from './collect-images';
 
 const MAX_CODE_LENGTH = 50_000;
 const MAX_OUTPUT_LENGTH = 8192;
 const TIMEOUT_MS = 60_000;
 
-export async function solveMath(args: { code: string }): Promise<string> {
+export async function solveMath(args: {
+	code: string;
+}): Promise<{ output: string; images: Array<{ name: string; dataUrl: string }> }> {
 	if (!args.code || !args.code.trim()) {
-		return 'Error: no code provided';
+		return { output: 'Error: no code provided', images: [] };
 	}
 	if (args.code.length > MAX_CODE_LENGTH) {
-		return `Error: code too long (max ${MAX_CODE_LENGTH.toLocaleString()} characters)`;
+		return {
+			output: `Error: code too long (max ${MAX_CODE_LENGTH.toLocaleString()} characters)`,
+			images: []
+		};
 	}
 
-	const tmpFile = `/tmp/lmux-math-${crypto.randomUUID()}.py`;
+	const tempDir = `/tmp/lmux-math-${crypto.randomUUID()}`;
 
 	let stdout = '';
 	let stderr = '';
@@ -20,17 +27,21 @@ export async function solveMath(args: { code: string }): Promise<string> {
 	let killed = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let sigkillTimer: ReturnType<typeof setTimeout> | undefined;
+	let images: Array<{ name: string; dataUrl: string }> = [];
 
 	try {
-		await Bun.write(tmpFile, args.code);
+		mkdirSync(tempDir, { recursive: true });
 
-		const command = `uv run --with sympy python3 ${tmpFile}`;
-		const { args: cmdArgs } = buildSandboxedCommand('/tmp', command);
+		await Bun.write(`${tempDir}/script.py`, args.code);
+
+		const command = `uv run --with sympy,matplotlib python3 ${tempDir}/script.py`;
+		const { args: cmdArgs } = buildSandboxedCommand(tempDir, command);
 
 		const proc = Bun.spawn(cmdArgs, {
-			cwd: '/tmp',
+			cwd: tempDir,
 			stdout: 'pipe',
-			stderr: 'pipe'
+			stderr: 'pipe',
+			env: { ...process.env, MPLCONFIGDIR: tempDir }
 		});
 
 		timer = setTimeout(() => {
@@ -50,27 +61,33 @@ export async function solveMath(args: { code: string }): Promise<string> {
 			new Response(proc.stderr).text()
 		]);
 		exitCode = await proc.exited;
+
+		images = collectImages(tempDir);
 	} finally {
 		if (timer) clearTimeout(timer);
 		if (sigkillTimer) clearTimeout(sigkillTimer);
 		try {
-			const { unlink } = await import('node:fs/promises');
-			await unlink(tmpFile);
+			rmSync(tempDir, { recursive: true, force: true });
 		} catch {
 			// Ignore cleanup errors
 		}
 	}
 
 	if (killed) {
-		return `Error: execution timed out after ${TIMEOUT_MS / 1000}s`;
+		return { output: `Error: execution timed out after ${TIMEOUT_MS / 1000}s`, images };
 	}
 
 	const combined = (stdout + (stderr ? '\n' + stderr : '')).slice(0, MAX_OUTPUT_LENGTH);
 
 	if (exitCode !== 0) {
 		const errText = stderr.slice(0, MAX_OUTPUT_LENGTH) || combined;
-		return `Error (exit code ${exitCode}):\n${errText}`;
+		return { output: `Error (exit code ${exitCode}):\n${errText}`, images };
 	}
 
-	return stdout.trim() || 'No output';
+	let output = stdout.trim() || 'No output';
+	if (images.length > 0) {
+		output += `\n[${images.length} image(s) generated]`;
+	}
+
+	return { output, images };
 }

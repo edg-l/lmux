@@ -547,10 +547,12 @@
 						}
 					];
 				},
-				onToolResult: (id, content, statusIdx, error) => {
+				onToolResult: (id, content, statusIdx, error, images) => {
 					if (statusIdx !== undefined) {
 						messages = messages.map((m, i) =>
-							i === statusIdx ? { ...m, content, toolStatus: 'done' as const, toolError: error } : m
+							i === statusIdx
+								? { ...m, content, toolStatus: 'done' as const, toolError: error, images }
+								: m
 						);
 					}
 					// Add a new assistant placeholder for the next response
@@ -587,7 +589,8 @@
 			for (const tm of pendingToolMessages) {
 				await saveMessage(conversationId, tm.role, tm.content, {
 					toolCalls: tm.toolCalls,
-					toolCallId: tm.toolCallId
+					toolCallId: tm.toolCallId,
+					images: tm.images
 				});
 			}
 

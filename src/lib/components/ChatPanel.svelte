@@ -13,6 +13,7 @@
 		getToolOutputPreview,
 		highlightDangers
 	} from '$lib/utils/chat';
+	import { buildSrcdoc } from '$lib/utils/html-toolkit';
 
 	interface DiffLine {
 		type: '+' | '-' | ' ';
@@ -96,6 +97,7 @@
 	}: Props = $props();
 
 	// Internal state
+	let fullscreenHtml = $state<string | null>(null);
 	let expandedThinking = $state<Set<number>>(new Set());
 	let expandedPlans = $state<Set<number>>(new Set());
 	let expandedTools = $state<Set<number>>(new Set());
@@ -217,7 +219,23 @@
 	export function getMessagesContainer() {
 		return messagesContainer;
 	}
+
+	function extractHtmlFromArgs(toolArgs: string | undefined): string | null {
+		if (!toolArgs) return null;
+		try {
+			const parsed = JSON.parse(toolArgs);
+			return typeof parsed.html === 'string' && parsed.html.length > 0 ? parsed.html : null;
+		} catch {
+			return null;
+		}
+	}
 </script>
+
+<svelte:window
+	onkeydown={(e) => {
+		if (e.key === 'Escape' && fullscreenHtml) fullscreenHtml = null;
+	}}
+/>
 
 <!-- Messages -->
 <div bind:this={messagesContainer} class="flex-1 overflow-y-auto px-4 py-6">
@@ -309,6 +327,8 @@
 					{@const toolSummary = getToolSummary(msg.toolName, msg.toolArgs)}
 					{@const parsed =
 						msg.toolStatus === 'done' && msg.content ? extractDiffSnippet(msg.content) : null}
+					{@const htmlContent =
+						msg.toolName === 'render_html' ? extractHtmlFromArgs(msg.toolArgs) : null}
 					<div
 						class="max-w-[90%] rounded-lg border border-l-2 border-[var(--color-border)] bg-[var(--color-elevated)] {msg.toolError
 							? 'border-l-red-500/40'
@@ -440,11 +460,59 @@
 								{/if}
 							</div>
 						{/if}
+						{#if msg.images && msg.images.length > 0}
+							<div class="border-t border-cyan-500/10 px-2.5 py-1.5">
+								<div class="flex flex-wrap gap-2">
+									{#each msg.images as img}
+										<img
+											src={img.dataUrl}
+											alt={img.name}
+											class="max-h-[28rem] max-w-full rounded-lg border border-white/10 object-contain"
+										/>
+									{/each}
+								</div>
+							</div>
+						{/if}
+						{#if msg.toolName === 'render_html' && msg.toolStatus === 'done' && !msg.toolError && htmlContent}
+							<div class="border-t border-cyan-500/10 p-2">
+								<div class="relative">
+									<iframe
+										sandbox="allow-scripts allow-same-origin"
+										srcdoc={buildSrcdoc(htmlContent)}
+										class="h-[400px] w-full rounded border border-[var(--color-border)]"
+										title="HTML demo"
+									></iframe>
+									<button
+										onclick={() => {
+											fullscreenHtml = htmlContent;
+										}}
+										class="absolute top-2 right-2 rounded bg-black/50 p-1.5 text-white/70 hover:bg-black/70 hover:text-white"
+										aria-label="View fullscreen"
+									>
+										<svg
+											class="h-4 w-4"
+											fill="none"
+											stroke="currentColor"
+											viewBox="0 0 24 24"
+											stroke-width="2"
+										>
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
+											/>
+										</svg>
+									</button>
+								</div>
+							</div>
+						{/if}
 					</div>
 				{:else if msg.role === 'tool'}
 					{@const isExpanded = expandedTools.has(idx)}
 					{@const toolSummary = getToolSummary(msg.toolName, msg.toolArgs)}
 					{@const parsed = msg.content ? extractDiffSnippet(msg.content) : null}
+					{@const htmlContent2 =
+						msg.toolName === 'render_html' ? extractHtmlFromArgs(msg.toolArgs) : null}
 					<div
 						class="max-w-[90%] rounded-lg border border-l-2 border-[var(--color-border)] bg-[var(--color-elevated)] {msg.toolError
 							? 'border-l-red-500/40'
@@ -572,6 +640,52 @@
 										{parsed ? parsed.summary : msg.content}
 									</p>
 								{/if}
+							</div>
+						{/if}
+						{#if msg.images && msg.images.length > 0}
+							<div class="border-t border-cyan-500/10 px-2.5 py-1.5">
+								<div class="flex flex-wrap gap-2">
+									{#each msg.images as img}
+										<img
+											src={img.dataUrl}
+											alt={img.name}
+											class="max-h-[28rem] max-w-full rounded-lg border border-white/10 object-contain"
+										/>
+									{/each}
+								</div>
+							</div>
+						{/if}
+						{#if msg.toolName === 'render_html' && !msg.toolError && htmlContent2}
+							<div class="border-t border-cyan-500/10 p-2">
+								<div class="relative">
+									<iframe
+										sandbox="allow-scripts allow-same-origin"
+										srcdoc={buildSrcdoc(htmlContent2)}
+										class="h-[400px] w-full rounded border border-[var(--color-border)]"
+										title="HTML demo"
+									></iframe>
+									<button
+										onclick={() => {
+											fullscreenHtml = htmlContent2;
+										}}
+										class="absolute top-2 right-2 rounded bg-black/50 p-1.5 text-white/70 hover:bg-black/70 hover:text-white"
+										aria-label="View fullscreen"
+									>
+										<svg
+											class="h-4 w-4"
+											fill="none"
+											stroke="currentColor"
+											viewBox="0 0 24 24"
+											stroke-width="2"
+										>
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
+											/>
+										</svg>
+									</button>
+								</div>
 							</div>
 						{/if}
 					</div>
@@ -884,6 +998,32 @@
 		</div>
 	{/if}
 </div>
+
+{#if fullscreenHtml}
+	<div
+		class="fixed inset-0 z-50 flex flex-col bg-black/90"
+		role="dialog"
+		aria-label="Fullscreen HTML demo"
+	>
+		<div class="flex items-center justify-end p-2">
+			<button
+				onclick={() => {
+					fullscreenHtml = null;
+				}}
+				class="rounded bg-white/10 px-3 py-1 text-sm text-white hover:bg-white/20"
+				aria-label="Close fullscreen"
+			>
+				Esc to close
+			</button>
+		</div>
+		<iframe
+			sandbox="allow-scripts allow-same-origin"
+			srcdoc={buildSrcdoc(fullscreenHtml)}
+			class="mx-4 mb-4 flex-1 rounded border border-white/10"
+			title="HTML demo fullscreen"
+		></iframe>
+	</div>
+{/if}
 
 <style>
 	.thinking-dots span {

@@ -52,6 +52,7 @@ export interface PendingToolMessage {
 	content: string;
 	toolCalls?: string;
 	toolCallId?: string;
+	images?: Array<{ name: string; dataUrl: string }>;
 }
 
 export interface TokenUsage {
