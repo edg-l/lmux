@@ -479,53 +479,51 @@
 								</div>
 							</div>
 						{/if}
-						{#if msg.toolName === 'render_html' && msg.toolStatus === 'done' && !msg.toolError && htmlContent}
-							<div class="px-1 pb-1">
-								<div class="relative">
-									<iframe
-										sandbox="allow-scripts allow-same-origin"
-										srcdoc={buildSrcdoc(htmlContent)}
-										class="w-full border-0"
-										style="height: 0; overflow: hidden;"
-										onload={(e) => {
-											const iframe = e.currentTarget as HTMLIFrameElement;
-											const resize = () => {
-												try {
-													const h = iframe.contentDocument?.documentElement?.scrollHeight ?? 0;
-													if (h > 0) iframe.style.height = h + 'px';
-												} catch {}
-											};
-											resize();
-											setTimeout(resize, 500);
-											setTimeout(resize, 2000);
-										}}
-										title="HTML demo"
-									></iframe>
-									<button
-										onclick={() => {
-											fullscreenHtml = htmlContent;
-										}}
-										class="absolute top-2 right-2 rounded bg-black/50 p-1.5 text-white/70 hover:bg-black/70 hover:text-white"
-										aria-label="View fullscreen"
-									>
-										<svg
-											class="h-4 w-4"
-											fill="none"
-											stroke="currentColor"
-											viewBox="0 0 24 24"
-											stroke-width="2"
-										>
-											<path
-												stroke-linecap="round"
-												stroke-linejoin="round"
-												d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
-											/>
-										</svg>
-									</button>
-								</div>
-							</div>
-						{/if}
 					</div>
+					{#if msg.toolName === 'render_html' && msg.toolStatus === 'done' && !msg.toolError && htmlContent}
+						<div class="relative max-w-[90%]">
+							<iframe
+								sandbox="allow-scripts allow-same-origin"
+								srcdoc={buildSrcdoc(htmlContent)}
+								class="w-full border-0"
+								style="height: 0; overflow: hidden;"
+								onload={(e) => {
+									const iframe = e.currentTarget as HTMLIFrameElement;
+									const resize = () => {
+										try {
+											const h = iframe.contentDocument?.documentElement?.scrollHeight ?? 0;
+											if (h > 0) iframe.style.height = h + 'px';
+										} catch {}
+									};
+									resize();
+									setTimeout(resize, 500);
+									setTimeout(resize, 2000);
+								}}
+								title="HTML demo"
+							></iframe>
+							<button
+								onclick={() => {
+									fullscreenHtml = htmlContent;
+								}}
+								class="absolute top-2 right-2 rounded bg-black/50 p-1.5 text-white/70 hover:bg-black/70 hover:text-white"
+								aria-label="View fullscreen"
+							>
+								<svg
+									class="h-4 w-4"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+									stroke-width="2"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
+									/>
+								</svg>
+							</button>
+						</div>
+					{/if}
 				{:else if msg.role === 'tool'}
 					{@const isExpanded = expandedTools.has(idx)}
 					{@const toolSummary = getToolSummary(msg.toolName, msg.toolArgs)}
@@ -676,53 +674,51 @@
 								</div>
 							</div>
 						{/if}
-						{#if msg.toolName === 'render_html' && !msg.toolError && htmlContent2}
-							<div class="px-1 pb-1">
-								<div class="relative">
-									<iframe
-										sandbox="allow-scripts allow-same-origin"
-										srcdoc={buildSrcdoc(htmlContent2)}
-										class="w-full border-0"
-										style="height: 0; overflow: hidden;"
-										onload={(e) => {
-											const iframe = e.currentTarget as HTMLIFrameElement;
-											const resize = () => {
-												try {
-													const h = iframe.contentDocument?.documentElement?.scrollHeight ?? 0;
-													if (h > 0) iframe.style.height = h + 'px';
-												} catch {}
-											};
-											resize();
-											setTimeout(resize, 500);
-											setTimeout(resize, 2000);
-										}}
-										title="HTML demo"
-									></iframe>
-									<button
-										onclick={() => {
-											fullscreenHtml = htmlContent2;
-										}}
-										class="absolute top-2 right-2 rounded bg-black/50 p-1.5 text-white/70 hover:bg-black/70 hover:text-white"
-										aria-label="View fullscreen"
-									>
-										<svg
-											class="h-4 w-4"
-											fill="none"
-											stroke="currentColor"
-											viewBox="0 0 24 24"
-											stroke-width="2"
-										>
-											<path
-												stroke-linecap="round"
-												stroke-linejoin="round"
-												d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
-											/>
-										</svg>
-									</button>
-								</div>
-							</div>
-						{/if}
 					</div>
+					{#if msg.toolName === 'render_html' && !msg.toolError && htmlContent2}
+						<div class="relative max-w-[90%]">
+							<iframe
+								sandbox="allow-scripts allow-same-origin"
+								srcdoc={buildSrcdoc(htmlContent2)}
+								class="w-full border-0"
+								style="height: 0; overflow: hidden;"
+								onload={(e) => {
+									const iframe = e.currentTarget as HTMLIFrameElement;
+									const resize = () => {
+										try {
+											const h = iframe.contentDocument?.documentElement?.scrollHeight ?? 0;
+											if (h > 0) iframe.style.height = h + 'px';
+										} catch {}
+									};
+									resize();
+									setTimeout(resize, 500);
+									setTimeout(resize, 2000);
+								}}
+								title="HTML demo"
+							></iframe>
+							<button
+								onclick={() => {
+									fullscreenHtml = htmlContent2;
+								}}
+								class="absolute top-2 right-2 rounded bg-black/50 p-1.5 text-white/70 hover:bg-black/70 hover:text-white"
+								aria-label="View fullscreen"
+							>
+								<svg
+									class="h-4 w-4"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+									stroke-width="2"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
+									/>
+								</svg>
+							</button>
+						</div>
+					{/if}
 				{:else if msg.role === 'approval' && showApprovals}
 					{@const approval = msg.approval}
 					{#if approval}
