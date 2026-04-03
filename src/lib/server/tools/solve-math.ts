@@ -41,7 +41,7 @@ export async function solveMath(args: {
 			cwd: tempDir,
 			stdout: 'pipe',
 			stderr: 'pipe',
-			env: { ...process.env, MPLCONFIGDIR: tempDir }
+			env: { ...process.env, MPLCONFIGDIR: tempDir, MPLBACKEND: 'Agg' }
 		});
 
 		timer = setTimeout(() => {

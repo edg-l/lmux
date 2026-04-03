@@ -357,7 +357,7 @@ export function getToolDefinitions(
 			function: {
 				name: 'solve_math',
 				description:
-					"Execute Python code with sympy for symbolic math: equations, calculus, algebra, linear algebra, etc. Print results to stdout. For symbolic results, also print LaTeX with print(latex(expr)) so you can render it in your response. matplotlib is also available for plotting. Save plots with plt.savefig('plot.png'). Images are displayed to the user. Example: \"from sympy import *\\nx = symbols('x')\\nresult = solve(x**2 - 4, x)\\nprint(result)\\nprint(latex(result))\"",
+					"Execute Python code with sympy for symbolic math: equations, calculus, algebra, linear algebra, etc. Print results to stdout. For symbolic results, also print LaTeX with print(latex(expr)) so you can render it in your response. matplotlib is also available for plotting. IMPORTANT: Use plt.savefig('plot.png') to save plots, NEVER plt.show() (there is no display). Images are displayed to the user. Example: \"from sympy import *\\nx = symbols('x')\\nresult = solve(x**2 - 4, x)\\nprint(result)\\nprint(latex(result))\"",
 				parameters: {
 					type: 'object',
 					properties: {
@@ -376,7 +376,7 @@ export function getToolDefinitions(
 			function: {
 				name: 'run_code',
 				description:
-					"Execute a code snippet and return its output. Use this to run Python or bash code for calculations, data processing, testing logic, or verifying answers. The code runs in an isolated sandbox. You can generate charts and plots by saving images to the current directory (e.g., import matplotlib.pyplot as plt; plt.savefig('chart.png')). matplotlib is pre-installed for Python. Supported: png, jpg, svg. Images are displayed to the user.",
+					"Execute a code snippet and return its output. Use this to run Python or bash code for calculations, data processing, testing logic, or verifying answers. The code runs in an isolated sandbox. You can generate charts and plots by saving images to the current directory. matplotlib is pre-installed for Python. IMPORTANT: Use plt.savefig('chart.png') to save plots, NEVER plt.show() (there is no display). Supported formats: png, jpg, webp. Images are displayed to the user.",
 				parameters: {
 					type: 'object',
 					properties: {

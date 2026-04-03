@@ -54,7 +54,7 @@ export async function runCode(args: {
 			cwd: tempDir,
 			stdout: 'pipe',
 			stderr: 'pipe',
-			env: { ...process.env, MPLCONFIGDIR: tempDir }
+			env: { ...process.env, MPLCONFIGDIR: tempDir, MPLBACKEND: 'Agg' }
 		});
 
 		let killed = false;
