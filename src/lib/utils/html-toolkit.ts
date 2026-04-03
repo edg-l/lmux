@@ -1,8 +1,8 @@
 // Injected AFTER the model's HTML so our styles always win.
 // Styles target raw HTML elements so the model just writes semantic markup.
 const TOOLKIT_CSS = `*, *::before, *::after { box-sizing: border-box !important; }
-html, body { background: transparent !important; color: #fafafa !important; font-family: 'DM Sans', system-ui, -apple-system, sans-serif !important; line-height: 1.5 !important; margin: 0 !important; padding: 0 !important; overflow-x: hidden !important; }
-body { padding: 0.5rem 0 !important; overflow: hidden !important; }
+html, body { background: transparent !important; color: #fafafa !important; font-family: 'DM Sans', system-ui, -apple-system, sans-serif !important; line-height: 1.5 !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
+body { padding: 0.5rem 0 !important; }
 body > div { box-shadow: none !important; }
 h1, h2, h3, h4, h5, h6 { color: #fafafa !important; margin-bottom: 0.5rem; }
 h1 { font-size: 1.5rem; font-weight: 700; }

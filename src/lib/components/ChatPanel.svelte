@@ -477,6 +477,7 @@
 						<div class="max-w-[90%]">
 							<iframe
 								sandbox="allow-scripts allow-same-origin"
+								scrolling="no"
 								srcdoc={buildSrcdoc(htmlContent)}
 								class="w-full border-0"
 								style="height: 500px; overflow: hidden;"
@@ -660,6 +661,7 @@
 						<div class="max-w-[90%]">
 							<iframe
 								sandbox="allow-scripts allow-same-origin"
+								scrolling="no"
 								srcdoc={buildSrcdoc(htmlContent2)}
 								class="w-full border-0"
 								style="height: 500px; overflow: hidden;"
