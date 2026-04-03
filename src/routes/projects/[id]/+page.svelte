@@ -85,6 +85,28 @@
 	let min_p = $state(0.0);
 	let repeat_penalty = $state(1.0);
 
+	let fetchingRecommended = $state(false);
+
+	async function fetchRecommendedSampling() {
+		const modelId = serverInfo?.modelId;
+		if (!modelId) return;
+		fetchingRecommended = true;
+		try {
+			const res = await fetch(`/api/models/${modelId}/sampling`, { method: 'POST' });
+			if (!res.ok) return;
+			const params = await res.json();
+			temperature = params.temperature;
+			top_p = params.top_p;
+			top_k = params.top_k;
+			min_p = params.min_p;
+			repeat_penalty = params.repeat_penalty;
+		} catch {
+			// ignore
+		} finally {
+			fetchingRecommended = false;
+		}
+	}
+
 	function resetSamplingDefaults() {
 		temperature = 0.6;
 		top_p = 0.95;
@@ -1031,12 +1053,21 @@
 								/>
 							</div>
 						{/each}
-						<button
-							onclick={resetSamplingDefaults}
-							class="mt-2 w-full rounded border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text-secondary)]"
-						>
-							Reset to defaults
-						</button>
+						<div class="mt-2 flex gap-1">
+							<button
+								onclick={fetchRecommendedSampling}
+								disabled={fetchingRecommended || !serverInfo?.modelId}
+								class="flex-1 rounded border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text-secondary)] disabled:opacity-50"
+							>
+								{fetchingRecommended ? 'Fetching...' : 'Fetch recommended'}
+							</button>
+							<button
+								onclick={resetSamplingDefaults}
+								class="flex-1 rounded border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--color-text-secondary)]"
+							>
+								Reset
+							</button>
+						</div>
 					</div>
 				</div>
 			{/if}
