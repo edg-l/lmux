@@ -46,16 +46,15 @@ select:focus { border-color: #22d3ee !important; }
 canvas { max-width: 100%; }
 ::selection { background: rgba(34, 211, 238, 0.2); }`;
 
-const TOOLKIT_SCRIPTS = `<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>
-<script>document.addEventListener('DOMContentLoaded',()=>{if(window.Chart){Chart.defaults.color='#a1a1aa';Chart.defaults.borderColor='#232328';}})<\/script>
-<script type="module">import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.180.0/three.module.min.js';window.THREE=THREE;<\/script>`;
+const TOOLKIT_SCRIPTS_HEAD = `<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>
+<script>if(window.Chart){Chart.defaults.color='#a1a1aa';Chart.defaults.borderColor='#232328';}<\/script>
+<script type="importmap">{"imports":{"three":"https://cdnjs.cloudflare.com/ajax/libs/three.js/0.180.0/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}<\/script>`;
 
 export function buildSrcdoc(html: string): string {
 	// Strip all <style> tags from model output to prevent theme conflicts
 	let cleaned = html.replace(/<style[\s\S]*?<\/style>/gi, '');
 	// Strip inline style from body/html tags (models add background-color etc.)
 	cleaned = cleaned.replace(/<(body|html)(\s[^>]*)style="[^"]*"([^>]*)>/gi, '<$1$2$3>');
-	// Inject our styles at the very end so they override everything
-	const suffix = `\n<style>${TOOLKIT_CSS}</style>\n${TOOLKIT_SCRIPTS}`;
-	return cleaned + suffix;
+	// Scripts at top (before content), styles at bottom (after content to override)
+	return TOOLKIT_SCRIPTS_HEAD + cleaned + `\n<style>${TOOLKIT_CSS}</style>`;
 }
