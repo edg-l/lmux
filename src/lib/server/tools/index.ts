@@ -376,7 +376,7 @@ export function getToolDefinitions(
 			function: {
 				name: 'run_code',
 				description:
-					"Execute a code snippet and return its output. Use this to run Python or bash code for calculations, data processing, testing logic, or verifying answers. The code runs in an isolated sandbox. You can generate charts and plots by saving images to the current directory. matplotlib is pre-installed for Python. IMPORTANT: Use plt.savefig('chart.png') to save plots, NEVER plt.show() (there is no display). Supported formats: png, jpg, webp. Images are displayed to the user.",
+					"Execute a code snippet and return its output. Use this to run Python or bash code for calculations, data processing, testing logic, or verifying answers. The code runs in an isolated sandbox. Pre-installed Python libraries: matplotlib, sympy, numpy. You can generate charts and plots by saving images to the current directory. IMPORTANT: Use plt.savefig('chart.png') to save plots, NEVER plt.show() (there is no display). Supported image formats: png, jpg, webp. Images are displayed to the user.",
 				parameters: {
 					type: 'object',
 					properties: {

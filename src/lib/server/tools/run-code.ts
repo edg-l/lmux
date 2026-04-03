@@ -46,7 +46,7 @@ export async function runCode(args: {
 
 		await Bun.write(filePath, args.code);
 
-		const command = isPython ? `uv run --with matplotlib python3 ${filename}` : `bash ${filename}`;
+		const command = isPython ? `uv run --with matplotlib,sympy,numpy python3 ${filename}` : `bash ${filename}`;
 		const { args: cmdArgs } = buildSandboxedCommand(tempDir, command);
 
 		const startTime = performance.now();
