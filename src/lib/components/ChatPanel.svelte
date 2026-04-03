@@ -479,13 +479,22 @@
 								sandbox="allow-scripts allow-same-origin"
 								srcdoc={buildSrcdoc(htmlContent)}
 								class="w-full border-0"
-								style="height: 0; overflow: hidden;"
+								style="height: 500px; overflow: hidden;"
 								onload={(e) => {
 									const iframe = e.currentTarget as HTMLIFrameElement;
 									const resize = () => {
 										try {
-											const h = iframe.contentDocument?.documentElement?.scrollHeight ?? 0;
-											if (h > 0) iframe.style.height = h + 'px';
+											const doc = iframe.contentDocument;
+											if (!doc) return;
+											const hasCanvas = doc.querySelector('canvas');
+											if (hasCanvas) {
+												// 3D/canvas content: use canvas height or keep default
+												const ch = hasCanvas.offsetHeight || hasCanvas.height;
+												if (ch > 50) iframe.style.height = Math.max(ch + 20, 400) + 'px';
+											} else {
+												const h = doc.documentElement?.scrollHeight ?? 0;
+												if (h > 0) iframe.style.height = h + 'px';
+											}
 										} catch {}
 									};
 									resize();
@@ -653,13 +662,22 @@
 								sandbox="allow-scripts allow-same-origin"
 								srcdoc={buildSrcdoc(htmlContent2)}
 								class="w-full border-0"
-								style="height: 0; overflow: hidden;"
+								style="height: 500px; overflow: hidden;"
 								onload={(e) => {
 									const iframe = e.currentTarget as HTMLIFrameElement;
 									const resize = () => {
 										try {
-											const h = iframe.contentDocument?.documentElement?.scrollHeight ?? 0;
-											if (h > 0) iframe.style.height = h + 'px';
+											const doc = iframe.contentDocument;
+											if (!doc) return;
+											const hasCanvas = doc.querySelector('canvas');
+											if (hasCanvas) {
+												// 3D/canvas content: use canvas height or keep default
+												const ch = hasCanvas.offsetHeight || hasCanvas.height;
+												if (ch > 50) iframe.style.height = Math.max(ch + 20, 400) + 'px';
+											} else {
+												const h = doc.documentElement?.scrollHeight ?? 0;
+												if (h > 0) iframe.style.height = h + 'px';
+											}
 										} catch {}
 									};
 									resize();
