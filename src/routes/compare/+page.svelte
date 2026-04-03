@@ -1,13 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import ComparePane from '$lib/components/ComparePane.svelte';
-
-	interface Conversation {
-		id: number;
-		title: string | null;
-		model_name: string | null;
-		created_at: string;
-	}
+	import type { Conversation } from '$lib/types/chat';
 
 	let conversations = $state<Conversation[]>([]);
 	let leftId: number | null = $state(null);

@@ -1,15 +1,5 @@
 <script lang="ts">
-	import type { ServerInfo } from '$lib/types/chat';
-
-	interface Conversation {
-		id: number;
-		title: string | null;
-		model_id: number | null;
-		model_name: string | null;
-		tags: string;
-		created_at: string;
-		updated_at: string;
-	}
+	import type { Conversation, ServerInfo } from '$lib/types/chat';
 
 	interface Props {
 		filteredConversations: Conversation[];

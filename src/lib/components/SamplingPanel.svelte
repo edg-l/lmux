@@ -1,15 +1,5 @@
 <script lang="ts">
-	interface PresetInfo {
-		id: number;
-		name: string;
-		system_prompt: string | null;
-		temperature: number | null;
-		top_p: number | null;
-		top_k: number | null;
-		min_p: number | null;
-		repeat_penalty: number | null;
-		thinking_budget: number | null;
-	}
+	import type { PresetInfo } from '$lib/types/chat';
 
 	interface Props {
 		temperature: number;

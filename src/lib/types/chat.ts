@@ -69,3 +69,45 @@ export interface ServerInfo {
 	contextSize: number | null;
 	lastTokensPerSecond: number | null;
 }
+
+export interface Conversation {
+	id: number;
+	title: string | null;
+	model_id: number | null;
+	model_name: string | null;
+	tags: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface AvailableModel {
+	id: number;
+	filename: string;
+}
+
+export interface Project {
+	id: number;
+	name: string;
+	path: string;
+	created_at: string;
+}
+
+export interface SamplingParams {
+	temperature: number;
+	top_p: number;
+	top_k: number;
+	min_p: number;
+	repeat_penalty: number;
+}
+
+export interface PresetInfo {
+	id: number;
+	name: string;
+	system_prompt: string | null;
+	temperature: number | null;
+	top_p: number | null;
+	top_k: number | null;
+	min_p: number | null;
+	repeat_penalty: number | null;
+	thinking_budget: number | null;
+}

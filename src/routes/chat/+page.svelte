@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import ChatPanel from '$lib/components/ChatPanel.svelte';
+	import ChatHeader from '$lib/components/ChatHeader.svelte';
 	import ChatSidebar from '$lib/components/ChatSidebar.svelte';
 	import SamplingPanel from '$lib/components/SamplingPanel.svelte';
 	import SystemPromptPanel from '$lib/components/SystemPromptPanel.svelte';
-	import type { Message } from '$lib/types/chat';
+	import type { Message, Conversation, AvailableModel, PresetInfo } from '$lib/types/chat';
 	import { processSSEStream } from '$lib/utils/stream';
 	import {
 		enrichToolMessages,
@@ -12,37 +13,27 @@
 		prepareMessagesForApi
 	} from '$lib/utils/chat';
 	import { getServerInfo, getServerLogs, connectServerInfo } from '$lib/stores/server-info.svelte';
-
-	interface Conversation {
-		id: number;
-		title: string | null;
-		model_id: number | null;
-		model_name: string | null;
-		tags: string;
-		created_at: string;
-		updated_at: string;
-	}
-
-	interface AvailableModel {
-		id: number;
-		filename: string;
-	}
-
-	interface SamplingParams {
-		temperature: number;
-		top_p: number;
-		top_k: number;
-		min_p: number;
-		repeat_penalty: number;
-	}
-
-	const SAMPLING_DEFAULTS: SamplingParams = {
-		temperature: 0.7,
-		top_p: 0.95,
-		top_k: 40,
-		min_p: 0.05,
-		repeat_penalty: 1.1
-	};
+	import {
+		loadPresets as fetchPresets,
+		savePreset,
+		deletePreset,
+		setDefaultPreset,
+		getDefaultPresetId
+	} from '$lib/utils/presets';
+	import {
+		SAMPLING_DEFAULTS,
+		loadSamplingParams as fetchSamplingParams,
+		saveSamplingDefaults as saveSamplingDefaultsApi,
+		fetchRecommendedSampling as fetchRecommendedSamplingApi,
+		resetSampling as getResetSampling
+	} from '$lib/utils/sampling';
+	import {
+		fetchConversations,
+		fetchConversation,
+		createConversation,
+		deleteConversation as deleteConversationApi,
+		saveMessage
+	} from '$lib/utils/conversations';
 
 	let conversations = $state<Conversation[]>([]);
 	let activeConversationId: number | null = $state(null);
@@ -125,22 +116,9 @@
 	let tagInput = $state('');
 	let activeTag: string | null = $state(null);
 
-	// Toolbar overflow menu
-
 	let defaultPresetId: number | null = $state(null);
 
 	// Feature 11: Prompt presets
-	interface PresetInfo {
-		id: number;
-		name: string;
-		system_prompt: string | null;
-		temperature: number | null;
-		top_p: number | null;
-		top_k: number | null;
-		min_p: number | null;
-		repeat_penalty: number | null;
-		thinking_budget: number | null;
-	}
 	let presets = $state<PresetInfo[]>([]);
 	let presetDropdownOpen = $state(false);
 	let savePresetOpen = $state(false);
@@ -234,33 +212,21 @@
 	}
 
 	async function loadSamplingParams(modelId: number) {
-		try {
-			const res = await fetch(`/api/models/${modelId}/sampling`);
-			if (!res.ok) return;
-			const params = await res.json();
+		const params = await fetchSamplingParams(modelId);
+		if (params) {
 			temperature = params.temperature;
 			top_p = params.top_p;
 			top_k = params.top_k;
 			min_p = params.min_p;
 			repeat_penalty = params.repeat_penalty;
 			samplingSource = params.source;
-		} catch {
-			// defaults
 		}
 		// Load default preset and auto-apply if no user override
-		try {
-			const dpRes = await fetch(`/api/models/${modelId}/default-preset`);
-			if (dpRes.ok) {
-				const dpData = await dpRes.json();
-				defaultPresetId = dpData.default_preset_id;
-				if (defaultPresetId != null && samplingSource === 'default') {
-					if (presets.length === 0) await loadPresets();
-					const preset = presets.find((p) => p.id === defaultPresetId);
-					if (preset) applyPreset(preset);
-				}
-			}
-		} catch {
-			// ignore
+		defaultPresetId = await getDefaultPresetId(modelId);
+		if (defaultPresetId != null && samplingSource === 'default') {
+			if (presets.length === 0) presets = await fetchPresets();
+			const preset = presets.find((p) => p.id === defaultPresetId);
+			if (preset) applyPreset(preset);
 		}
 		// Load system prompt
 		try {
@@ -277,10 +243,12 @@
 	async function saveSamplingDefaults() {
 		if (!samplingModelId) return;
 		try {
-			await fetch(`/api/models/${samplingModelId}/sampling`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ temperature, top_p, top_k, min_p, repeat_penalty })
+			await saveSamplingDefaultsApi(samplingModelId, {
+				temperature,
+				top_p,
+				top_k,
+				min_p,
+				repeat_penalty
 			});
 			samplingSource = 'user';
 		} catch {
@@ -294,19 +262,17 @@
 		if (!samplingModelId) return;
 		fetchingRecommended = true;
 		try {
-			const res = await fetch(`/api/models/${samplingModelId}/sampling`, { method: 'POST' });
-			if (!res.ok) {
-				const data = await res.json();
-				modelError = data.error ?? 'Failed to fetch recommended params';
+			const result = await fetchRecommendedSamplingApi(samplingModelId);
+			if ('error' in result) {
+				modelError = result.error;
 				return;
 			}
-			const params = await res.json();
-			temperature = params.temperature;
-			top_p = params.top_p;
-			top_k = params.top_k;
-			min_p = params.min_p;
-			repeat_penalty = params.repeat_penalty;
-			samplingSource = params.source;
+			temperature = result.temperature;
+			top_p = result.top_p;
+			top_k = result.top_k;
+			min_p = result.min_p;
+			repeat_penalty = result.repeat_penalty;
+			samplingSource = result.source;
 		} catch {
 			modelError = 'Failed to fetch recommended params';
 		} finally {
@@ -315,21 +281,17 @@
 	}
 
 	function resetSampling() {
-		temperature = SAMPLING_DEFAULTS.temperature;
-		top_p = SAMPLING_DEFAULTS.top_p;
-		top_k = SAMPLING_DEFAULTS.top_k;
-		min_p = SAMPLING_DEFAULTS.min_p;
-		repeat_penalty = SAMPLING_DEFAULTS.repeat_penalty;
+		const defaults = getResetSampling();
+		temperature = defaults.temperature;
+		top_p = defaults.top_p;
+		top_k = defaults.top_k;
+		min_p = defaults.min_p;
+		repeat_penalty = defaults.repeat_penalty;
 		samplingSource = 'default';
 	}
 
 	async function loadConversations() {
-		try {
-			const res = await fetch('/api/conversations');
-			if (res.ok) conversations = await res.json();
-		} catch {
-			/* ignore */
-		}
+		conversations = await fetchConversations();
 	}
 
 	async function newConversation() {
@@ -342,19 +304,12 @@
 
 	async function selectConversation(id: number) {
 		activeConversationId = id;
-		try {
-			const res = await fetch(`/api/conversations/${id}`);
-			if (res.ok) {
-				const data = await res.json();
-				messages = enrichToolMessages(data.messages ?? []);
-			}
-		} catch {
-			messages = [];
-		}
+		const rawMessages = await fetchConversation(id);
+		messages = enrichToolMessages(rawMessages);
 	}
 
 	async function deleteConversation(id: number) {
-		await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+		await deleteConversationApi(id);
 		conversations = conversations.filter((c) => c.id !== id);
 		if (activeConversationId === id) {
 			activeConversationId = null;
@@ -374,49 +329,10 @@
 		modelError = '';
 
 		const title = input.trim().slice(0, 50) || 'New conversation';
-		const res = await fetch('/api/conversations', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ title, modelId })
-		});
-		const data = await res.json();
+		const data = await createConversation(modelId, title);
 		activeConversationId = data.id;
 		await loadConversations();
 		return data.id;
-	}
-
-	async function saveMessage(
-		conversationId: number,
-		role: string,
-		content: string,
-		opts?: {
-			toolCallId?: string;
-			toolCalls?: string;
-			tokenCount?: number;
-			images?: Array<{ name: string; dataUrl: string }>;
-		}
-	): Promise<number | null> {
-		try {
-			const res = await fetch(`/api/conversations/${conversationId}/messages`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					role,
-					content,
-					...(opts?.toolCallId && { toolCallId: opts.toolCallId }),
-					...(opts?.toolCalls && { toolCalls: opts.toolCalls }),
-					...(opts?.tokenCount != null && { tokenCount: opts.tokenCount }),
-					...(opts?.images && { images: JSON.stringify(opts.images) })
-				})
-			});
-			if (res.ok) {
-				const data = await res.json();
-				return data.id;
-			}
-		} catch {
-			// ignore save failures
-		}
-		return null;
 	}
 
 	async function sendMessage() {
@@ -795,12 +711,7 @@
 	}
 
 	async function loadPresets() {
-		try {
-			const res = await fetch('/api/presets');
-			if (res.ok) presets = await res.json();
-		} catch {
-			// ignore
-		}
+		presets = await fetchPresets();
 	}
 
 	function applyPreset(preset: PresetInfo) {
@@ -825,19 +736,13 @@
 		const name = savePresetName.trim();
 		if (!name) return;
 		try {
-			await fetch('/api/presets', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					name,
-					system_prompt: modelSystemPrompt,
-					temperature,
-					top_p,
-					top_k,
-					min_p,
-					repeat_penalty,
-					thinking_budget: thinkingBudget
-				})
+			await savePreset(name, modelSystemPrompt, {
+				temperature,
+				top_p,
+				top_k,
+				min_p,
+				repeat_penalty,
+				thinking_budget: thinkingBudget
 			});
 			await loadPresets();
 			savePresetOpen = false;
@@ -849,7 +754,7 @@
 
 	async function deletePresetById(id: number) {
 		try {
-			await fetch(`/api/presets/${id}`, { method: 'DELETE' });
+			await deletePreset(id);
 			await loadPresets();
 			if (defaultPresetId === id) defaultPresetId = null;
 		} catch {
@@ -860,11 +765,7 @@
 	async function setAsDefaultPreset(presetId: number | null) {
 		if (!samplingModelId) return;
 		try {
-			await fetch(`/api/models/${samplingModelId}/default-preset`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ preset_id: presetId })
-			});
+			await setDefaultPreset(samplingModelId, presetId);
 			defaultPresetId = presetId;
 		} catch {
 			// ignore
@@ -911,241 +812,24 @@
 	<!-- Chat area -->
 	<div class="flex min-w-0 flex-1 flex-col">
 		<!-- Header -->
-		<div class="flex items-center gap-2 border-b border-[var(--color-border)] px-4 py-2">
-			<button
-				onclick={() => (sidebarOpen = !sidebarOpen)}
-				class="rounded p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
-				aria-label="Toggle conversations"
-			>
-				<svg
-					class="h-4 w-4"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-					stroke-width="1.5"
-				>
-					<path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-				</svg>
-			</button>
-
-			<span class="flex-1 text-xs font-medium text-[var(--color-text-secondary)]">
-				{#if activeConversation}
-					{activeConversation.title || 'Chat'}
-				{:else}
-					New Chat
-				{/if}
-			</span>
-
-			<!-- Model indicator -->
-			{#if activeConversation?.model_name}
-				<div
-					class="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1"
-				>
-					{#if serverInfo?.status === 'ready' && serverInfo.modelId === activeConversation.model_id}
-						<span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-					{:else}
-						<span class="h-1.5 w-1.5 rounded-full bg-[var(--color-text-muted)]"></span>
-					{/if}
-					<span
-						class="max-w-48 truncate font-mono text-xs text-[var(--color-text-secondary)]"
-						title={activeConversation.model_name}>{activeConversation.model_name}</span
-					>
-					{#if serverInfo?.status === 'ready' && serverInfo.modelId === activeConversation.model_id && serverInfo.lastTokensPerSecond != null}
-						<span class="font-mono text-xs text-[var(--color-accent)]"
-							>{serverInfo.lastTokensPerSecond.toFixed(1)} t/s</span
-						>
-					{/if}
-				</div>
-			{:else if serverInfo?.status === 'ready' && serverInfo.modelName}
-				<div
-					class="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1"
-				>
-					<span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-					<span
-						class="max-w-48 truncate font-mono text-xs text-[var(--color-text-secondary)]"
-						title={serverInfo.modelName}>{serverInfo.modelName}</span
-					>
-					{#if serverInfo.lastTokensPerSecond != null}
-						<span class="font-mono text-xs text-[var(--color-accent)]"
-							>{serverInfo.lastTokensPerSecond.toFixed(1)} t/s</span
-						>
-					{/if}
-				</div>
-			{:else if serverInfo?.status === 'starting'}
-				<div
-					class="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1"
-				>
-					<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400"></span>
-					<span class="text-xs text-[var(--color-text-muted)]">Loading model...</span>
-				</div>
-			{:else}
-				<div
-					class="flex items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1"
-				>
-					<span class="h-1.5 w-1.5 rounded-full bg-[var(--color-text-muted)]"></span>
-					<span class="text-xs text-[var(--color-text-muted)]">No model</span>
-				</div>
-			{/if}
-
-			<!-- Export dropdown -->
-			{#if activeConversation}
-				<div class="relative">
-					<button
-						onclick={() => (exportOpen = !exportOpen)}
-						class="rounded p-1 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
-						aria-label="Export chat"
-						title="Export chat"
-					>
-						<svg
-							class="h-4 w-4"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-							stroke-width="1.5"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-							/>
-						</svg>
-					</button>
-					{#if exportOpen}
-						<div
-							class="absolute right-0 z-10 mt-1 w-32 rounded-md border border-[var(--color-border)] bg-[var(--color-elevated)] py-1 shadow-lg"
-						>
-							<button
-								onclick={() => exportChat('markdown')}
-								class="block w-full px-3 py-1.5 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-surface)]"
-								>Export MD</button
-							>
-							<button
-								onclick={() => exportChat('json')}
-								class="block w-full px-3 py-1.5 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-surface)]"
-								>Export JSON</button
-							>
-						</div>
-					{/if}
-				</div>
-			{/if}
-
-			<!-- Tools toggle (wrench icon) -->
-			<button
-				onclick={toggleTools}
-				class="rounded p-1.5 transition-colors {toolsEnabled
-					? 'text-[var(--color-accent)]'
-					: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
-				title={toolsEnabled ? 'Tools enabled' : 'Tools disabled'}
-			>
-				<svg
-					class="h-5 w-5"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-					stroke-width="1.5"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						d="M21.75 6.75a4.5 4.5 0 01-4.884 4.484c-1.076-.091-2.264.071-2.95.904l-7.152 8.684a2.548 2.548 0 11-3.586-3.586l8.684-7.152c.833-.686.995-1.874.904-2.95a4.5 4.5 0 016.336-4.486l-3.276 3.276a3.004 3.004 0 002.25 2.25l3.276-3.276c.256.565.398 1.192.398 1.852z"
-					/>
-				</svg>
-			</button>
-
-			<!-- Memory toggle (note icon) -->
-			{#if toolsEnabled}
-				<button
-					onclick={() => (memoryEnabled = !memoryEnabled)}
-					class="rounded p-1.5 transition-colors {memoryEnabled
-						? 'text-[var(--color-accent)]'
-						: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
-					title={memoryEnabled ? 'Memory enabled' : 'Memory disabled'}
-				>
-					<svg
-						class="h-5 w-5"
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
-						stroke-width="1.5"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
-						/>
-					</svg>
-				</button>
-			{/if}
-
-			<!-- Sampling toggle -->
-			<button
-				onclick={() => (samplingOpen = !samplingOpen)}
-				class="rounded p-1.5 transition-colors {samplingOpen
-					? 'text-[var(--color-accent)]'
-					: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
-				title="Sampling parameters"
-			>
-				<svg
-					class="h-5 w-5"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-					stroke-width="1.5"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"
-					/>
-				</svg>
-			</button>
-
-			<!-- System prompt toggle -->
-			<button
-				onclick={() => (systemPromptOpen = !systemPromptOpen)}
-				class="rounded p-1.5 transition-colors {systemPromptOpen
-					? 'text-[var(--color-accent)]'
-					: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
-				title="System prompt"
-			>
-				<svg
-					class="h-5 w-5"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-					stroke-width="1.5"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"
-					/>
-				</svg>
-			</button>
-
-			<!-- Server logs toggle -->
-			<button
-				onclick={() => (logsOpen = !logsOpen)}
-				class="rounded p-1.5 transition-colors {logsOpen
-					? 'text-[var(--color-accent)]'
-					: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
-				title="Server logs"
-			>
-				<svg
-					class="h-5 w-5"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-					stroke-width="1.5"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"
-					/>
-				</svg>
-			</button>
-		</div>
+		<ChatHeader
+			ontogglesidebar={() => (sidebarOpen = !sidebarOpen)}
+			{activeConversation}
+			{serverInfo}
+			{exportOpen}
+			onexport={exportChat}
+			ontoggleexport={() => (exportOpen = !exportOpen)}
+			{toolsEnabled}
+			ontoggletools={toggleTools}
+			{memoryEnabled}
+			ontogglememory={() => (memoryEnabled = !memoryEnabled)}
+			{samplingOpen}
+			ontogglesampling={() => (samplingOpen = !samplingOpen)}
+			{systemPromptOpen}
+			ontogglesystemprompt={() => (systemPromptOpen = !systemPromptOpen)}
+			{logsOpen}
+			ontogglelogs={() => (logsOpen = !logsOpen)}
+		/>
 
 		<!-- Server Logs panel -->
 		{#if logsOpen}

@@ -1,13 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-
-	interface Conversation {
-		id: number;
-		title: string | null;
-		model_name: string | null;
-		created_at: string;
-		updated_at: string;
-	}
+	import type { Conversation } from '$lib/types/chat';
 
 	interface Props {
 		projectId: number;

@@ -1,13 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-
-	interface Project {
-		id: number;
-		name: string;
-		path: string;
-		created_at: string;
-	}
+	import type { Project } from '$lib/types/chat';
 
 	let projects = $state<Project[]>([]);
 	let showBrowser = $state(false);

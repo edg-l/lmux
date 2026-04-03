@@ -1,30 +1,16 @@
 import type { RequestHandler } from './$types';
 import { getServerState } from '$lib/server/llama';
 import { getSetting } from '$lib/server/settings';
-import { getToolDefinitions, executeTool } from '$lib/server/tools';
+import { getToolDefinitions } from '$lib/server/tools';
 import { consumeLlamaStream } from '$lib/server/tools/llama-stream';
 import type { ToolCall } from '$lib/server/tools/llama-stream';
-import {
-	resolveSystemPrompt,
-	PLANNING_SYSTEM_PROMPT,
-	RETRIEVAL_SYSTEM_PROMPT,
-	buildPlanInjectedPrompt,
-	parseSearchTerms
-} from '$lib/server/system-prompt';
-import { searchProjectFiles } from '$lib/server/tools/search-files';
-import { listProjectDirectory } from '$lib/server/tools/list-directory';
-import { readProjectFile } from '$lib/server/tools/read-file';
-import {
-	requestApproval,
-	cleanupApproval,
-	requestSandboxResolution
-} from '$lib/server/approval-store';
-import { detectDangerousPatterns } from '$lib/server/danger-detect';
-import { isLandlockAvailable } from '$lib/server/sandbox';
+import { resolveSystemPrompt, buildPlanInjectedPrompt } from '$lib/server/system-prompt';
+import { cleanupApproval } from '$lib/server/approval-store';
 import { getProject } from '$lib/server/projects';
-import { isCommandApproved, recordApprovalResult } from '$lib/server/sandbox-rules';
-import { homedir } from 'node:os';
 import { buildMemoryContext } from '$lib/server/tools/memory';
+import { performRetrieval } from '$lib/server/chat/retrieval';
+import { performPlanning } from '$lib/server/chat/planning';
+import { executeToolCall } from '$lib/server/chat/tool-executor';
 
 interface ChatMessage {
 	role: string;
@@ -84,6 +70,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	const stream = new ReadableStream({
 		async start(controller) {
+			const encoder = new TextEncoder();
 			const pendingApprovalIds: string[] = [];
 			try {
 				// Ensure all tool_calls have type: "function" (history from DB may lack it)
@@ -98,166 +85,53 @@ export const POST: RequestHandler = async ({ request }) => {
 				});
 				let effectiveSystemPrompt = systemPrompt;
 
+				const llamaUrl = `http://localhost:${state.port}`;
+				const samplingParams = body.sampling
+					? {
+							temperature: body.sampling.temperature,
+							top_p: body.sampling.top_p,
+							top_k: body.sampling.top_k,
+							min_p: body.sampling.min_p,
+							repeat_penalty: body.sampling.repeat_penalty
+						}
+					: {};
+				const thinkingBudget = body.sampling?.thinking_budget;
+
+				const emit = (type: string, data: Record<string, unknown>) => {
+					controller.enqueue(encoder.encode(sseEvent(JSON.stringify({ type, ...data }))));
+				};
+
 				// Planning pass: when plan_enabled and project_id, generate a plan first
 				// Skip planning on continuations (when previous message is assistant/tool)
 				const prevMsg = normalized.length >= 2 ? normalized[normalized.length - 2] : null;
 				const isContinuation = prevMsg?.role === 'assistant' || prevMsg?.role === 'tool';
 				if (body.plan_enabled && body.project_id && !isContinuation) {
 					// Pass 0: Retrieval - get codebase context for the planning prompt
-					controller.enqueue(
-						new TextEncoder().encode(
-							sseEvent(JSON.stringify({ type: 'retrieval_status', status: 'searching' }))
-						)
-					);
-					let retrievalContext = '';
-					try {
-						// Get project directory tree
-						const tree = await listProjectDirectory({ depth: 3 }, project!.path);
-						retrievalContext += `## Project Structure\n${tree}\n\n`;
-
-						// Ask the model for search terms
-						const retrievalMessages: ChatMessage[] = [
-							{ role: 'system', content: RETRIEVAL_SYSTEM_PROMPT },
-							...normalized
-						];
-
-						const retrievalRes = await fetch(`http://localhost:${state.port}/v1/chat/completions`, {
-							method: 'POST',
-							headers: { 'Content-Type': 'application/json' },
-							signal: AbortSignal.timeout(120_000),
-							body: JSON.stringify({
-								messages: retrievalMessages,
-								stream: true,
-								stream_options: { include_usage: true },
-								max_tokens: 1024,
-								...(body.sampling && {
-									temperature: body.sampling.temperature,
-									top_p: body.sampling.top_p,
-									top_k: body.sampling.top_k,
-									min_p: body.sampling.min_p,
-									repeat_penalty: body.sampling.repeat_penalty
-								}),
-								...(body.sampling?.thinking_budget != null &&
-									body.sampling.thinking_budget > 0 && {
-										thinking_budget: body.sampling.thinking_budget
-									})
-							})
-						});
-
-						if (retrievalRes.ok && retrievalRes.body) {
-							const retrievalResult = await consumeLlamaStream(retrievalRes.body);
-							const searchTerms = parseSearchTerms(retrievalResult.content);
-
-							if (searchTerms.length > 0) {
-								// Search for each term and collect unique file paths
-								const seenFiles = new Set<string>();
-								const snippets: string[] = [];
-
-								for (const term of searchTerms) {
-									const results = await searchProjectFiles({ pattern: term }, project!.path);
-									if (results === 'No matches found.') continue;
-
-									// Extract unique file paths from rg output (path:line:content)
-									for (const line of results.split('\n')) {
-										const match = line.match(/^([^:]+):\d+:/);
-										if (match && !seenFiles.has(match[1])) {
-											seenFiles.add(match[1]);
-										}
-									}
-								}
-
-								// Read first 50 lines of up to 5 relevant files
-								const filesToRead = [...seenFiles].slice(0, 5);
-								for (const filePath of filesToRead) {
-									// Convert absolute path to relative
-									const relPath = filePath.startsWith(project!.path)
-										? filePath.slice(project!.path.length + 1)
-										: filePath;
-									const content = await readProjectFile(
-										{ path: relPath, limit: 50 },
-										project!.path
-									);
-									if (!content.startsWith('File not found')) {
-										snippets.push(`### ${relPath}\n\`\`\`\n${content}\n\`\`\``);
-									}
-								}
-
-								if (snippets.length > 0) {
-									retrievalContext += `## Relevant Files\n${snippets.join('\n\n')}\n`;
-								}
-							}
-						}
-					} catch {
-						// Retrieval is best-effort, continue without it
-					}
-
-					controller.enqueue(
-						new TextEncoder().encode(
-							sseEvent(JSON.stringify({ type: 'retrieval_status', status: 'done' }))
-						)
-					);
-
-					// Build planning prompt with retrieval context
-					const planningPrompt = retrievalContext
-						? `${PLANNING_SYSTEM_PROMPT}\n\n## Codebase Context\n${retrievalContext}`
-						: PLANNING_SYSTEM_PROMPT;
-
-					const planMessages: ChatMessage[] = [
-						{ role: 'system', content: planningPrompt },
-						...normalized
-					];
-
-					const planRes = await fetch(`http://localhost:${state.port}/v1/chat/completions`, {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						signal: AbortSignal.timeout(180_000),
-						body: JSON.stringify({
-							messages: planMessages,
-							stream: true,
-							stream_options: { include_usage: true },
-							max_tokens: 4096,
-							...(body.sampling && {
-								temperature: body.sampling.temperature,
-								top_p: body.sampling.top_p,
-								top_k: body.sampling.top_k,
-								min_p: body.sampling.min_p,
-								repeat_penalty: body.sampling.repeat_penalty
-							}),
-							...(body.sampling?.thinking_budget != null &&
-								body.sampling.thinking_budget > 0 && {
-									thinking_budget: body.sampling.thinking_budget
-								})
-						})
+					const retrievalContext = await performRetrieval({
+						project: project!,
+						normalizedMessages: normalized,
+						llamaUrl,
+						samplingParams,
+						thinkingBudget,
+						signal: AbortSignal.timeout(120_000),
+						emit
 					});
 
-					if (planRes.ok && planRes.body) {
-						const planResult = await consumeLlamaStream(planRes.body);
-						const planText = planResult.content;
+					// Pass 1: Planning
+					const planText = await performPlanning({
+						project: project! as { id: number; path: string; name: string },
+						normalizedMessages: normalized,
+						retrievalContext,
+						llamaUrl,
+						samplingParams,
+						thinkingBudget,
+						signal: AbortSignal.timeout(180_000),
+						emit
+					});
 
-						// Emit plan chunks for UI streaming
-						for (let i = 0; i < planText.length; i += CHUNK_SIZE) {
-							const chunk = planText.slice(i, i + CHUNK_SIZE);
-							controller.enqueue(
-								new TextEncoder().encode(
-									sseEvent(JSON.stringify({ type: 'plan_delta', content: chunk }))
-								)
-							);
-						}
-
-						// Emit plan_done with full text
-						controller.enqueue(
-							new TextEncoder().encode(
-								sseEvent(JSON.stringify({ type: 'plan_done', content: planText }))
-							)
-						);
-
-						// Inject plan into the coding system prompt
-						if (planText.trim()) {
-							effectiveSystemPrompt = buildPlanInjectedPrompt(
-								effectiveSystemPrompt ?? '',
-								planText
-							);
-						}
+					// Inject plan into the coding system prompt
+					if (planText.trim()) {
+						effectiveSystemPrompt = buildPlanInjectedPrompt(effectiveSystemPrompt ?? '', planText);
 					}
 				}
 
@@ -276,7 +150,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 				for (;;) {
 					const disableTools = false;
-					const llamaRes = await fetch(`http://localhost:${state.port}/v1/chat/completions`, {
+					const llamaRes = await fetch(`${llamaUrl}/v1/chat/completions`, {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
 						signal: AbortSignal.timeout(600_000),
@@ -285,16 +159,10 @@ export const POST: RequestHandler = async ({ request }) => {
 							stream: true,
 							stream_options: { include_usage: true },
 							...(tools.length > 0 && !disableTools && { tools }),
-							...(body.sampling && {
-								temperature: body.sampling.temperature,
-								top_p: body.sampling.top_p,
-								top_k: body.sampling.top_k,
-								min_p: body.sampling.min_p,
-								repeat_penalty: body.sampling.repeat_penalty
-							}),
-							...(body.sampling?.thinking_budget != null &&
-								body.sampling.thinking_budget > 0 && {
-									thinking_budget: body.sampling.thinking_budget
+							...samplingParams,
+							...(thinkingBudget != null &&
+								thinkingBudget > 0 && {
+									thinking_budget: thinkingBudget
 								})
 						})
 					});
@@ -302,7 +170,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					if (!llamaRes.ok || !llamaRes.body) {
 						const text = await llamaRes.text();
 						controller.enqueue(
-							new TextEncoder().encode(
+							encoder.encode(
 								sseEvent(
 									JSON.stringify({
 										type: 'delta',
@@ -344,7 +212,7 @@ export const POST: RequestHandler = async ({ request }) => {
 						// Emit tool_call events
 						for (const tc of result.toolCalls) {
 							controller.enqueue(
-								new TextEncoder().encode(
+								encoder.encode(
 									sseEvent(
 										JSON.stringify({
 											type: 'tool_call',
@@ -366,219 +234,23 @@ export const POST: RequestHandler = async ({ request }) => {
 
 						// Execute each tool and emit results
 						for (const tc of result.toolCalls) {
-							let args: Record<string, unknown>;
-							try {
-								args = JSON.parse(tc.function.arguments);
-							} catch {
-								args = {};
-							}
-
-							let toolResult: string;
-							let toolError = false;
-							let fileChanged:
-								| { path: string; operation: 'created' | 'modified'; oldContent?: string }
-								| undefined;
-							let blockedPaths: string[] = [];
-							let toolImages: Array<{ name: string; dataUrl: string }> = [];
-
-							// Approval flow for run_command and start_process
-							if (
-								(tc.function.name === 'run_command' || tc.function.name === 'start_process') &&
-								typeof args.command === 'string'
-							) {
-								const command = args.command;
-								const autoApproved = isCommandApproved(command);
-
-								if (!autoApproved) {
-									const dangers = detectDangerousPatterns(command);
-									const requestId = crypto.randomUUID();
-									pendingApprovalIds.push(requestId);
-
-									controller.enqueue(
-										new TextEncoder().encode(
-											sseEvent(
-												JSON.stringify({
-													type: 'approval_request',
-													requestId,
-													command,
-													dangers,
-													sandboxed: isLandlockAvailable()
-												})
-											)
-										)
-									);
-
-									const approvalResult = await requestApproval(requestId, command);
-									// Remove from pending list after resolution
-									const idx = pendingApprovalIds.indexOf(requestId);
-									if (idx !== -1) pendingApprovalIds.splice(idx, 1);
-
-									if (command) recordApprovalResult(command, approvalResult);
-
-									if (approvalResult === 'timeout') {
-										toolResult = 'Command approval timed out';
-										toolError = true;
-									} else if (approvalResult === 'denied') {
-										toolResult = 'Command denied by user';
-										toolError = true;
-									} else {
-										try {
-											const execResult = await executeTool(tc.function.name, args, project);
-											toolResult = execResult.result;
-											toolError = execResult.error ?? false;
-											fileChanged = execResult.fileChanged;
-											blockedPaths = execResult.blockedPaths ?? [];
-											toolImages = execResult.images ?? [];
-										} catch (e) {
-											toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
-											toolError = true;
-										}
-									}
-								} else {
-									// Auto-approved command
-									try {
-										const execResult = await executeTool(tc.function.name, args, project);
-										toolResult = execResult.result;
-										toolError = execResult.error ?? false;
-										fileChanged = execResult.fileChanged;
-										blockedPaths = execResult.blockedPaths ?? [];
-										toolImages = execResult.images ?? [];
-									} catch (e) {
-										toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
-										toolError = true;
-									}
-								}
-							} else if (tc.function.name === 'run_code') {
-								const lang = typeof args.language === 'string' ? args.language : 'unknown';
-								const code = typeof args.code === 'string' ? args.code : '';
-								const displayString = `[${lang}] ${code.slice(0, 500)}`;
-
-								const requestId = crypto.randomUUID();
-								pendingApprovalIds.push(requestId);
-
-								controller.enqueue(
-									new TextEncoder().encode(
-										sseEvent(
-											JSON.stringify({
-												type: 'approval_request',
-												requestId,
-												command: displayString,
-												dangers: [],
-												sandboxed: isLandlockAvailable()
-											})
-										)
-									)
-								);
-
-								const approvalResult = await requestApproval(requestId, displayString);
-								const idx = pendingApprovalIds.indexOf(requestId);
-								if (idx !== -1) pendingApprovalIds.splice(idx, 1);
-
-								recordApprovalResult('run_code:' + lang, approvalResult);
-
-								if (approvalResult === 'timeout') {
-									toolResult = 'Code execution approval timed out';
-									toolError = true;
-								} else if (approvalResult === 'denied') {
-									toolResult = 'Code execution denied by user';
-									toolError = true;
-								} else {
-									try {
-										const execResult = await executeTool(tc.function.name, args, project);
-										toolResult = execResult.result;
-										toolError = execResult.error ?? false;
-										fileChanged = execResult.fileChanged;
-										toolImages = execResult.images ?? [];
-									} catch (e) {
-										toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
-										toolError = true;
-									}
-								}
-							} else {
-								try {
-									const execResult = await executeTool(tc.function.name, args, project);
-									toolResult = execResult.result;
-									toolError = execResult.error ?? false;
-									fileChanged = execResult.fileChanged;
-									toolImages = execResult.images ?? [];
-								} catch (e) {
-									toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
-									toolError = true;
-								}
-							}
-
-							// Wait for user to resolve sandbox blocked paths before returning result
-							if (blockedPaths.length > 0) {
-								const home = homedir();
-								const displayPaths = blockedPaths.map((p) =>
-									p.startsWith(home) ? '~' + p.slice(home.length) : p
-								);
-								const sandboxRequestId = crypto.randomUUID();
-								controller.enqueue(
-									new TextEncoder().encode(
-										sseEvent(
-											JSON.stringify({
-												type: 'sandbox_blocked',
-												requestId: sandboxRequestId,
-												paths: displayPaths,
-												absolutePaths: blockedPaths
-											})
-										)
-									)
-								);
-
-								// Wait for user to allow or dismiss
-								const sandboxResult = await requestSandboxResolution(sandboxRequestId);
-								if (sandboxResult === 'allowed') {
-									// Re-run the command with the new path exception
-									try {
-										const retryResult = await executeTool(tc.function.name, args, project);
-										toolResult = retryResult.result;
-										toolError = retryResult.error ?? false;
-										fileChanged = retryResult.fileChanged;
-										toolImages = retryResult.images ?? [];
-										// Don't check blockedPaths again to avoid infinite loop
-									} catch (e) {
-										toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
-										toolError = true;
-									}
-								}
-								// If dismissed or timeout, the original error result is sent to the model
-							}
-
-							if (fileChanged) {
-								controller.enqueue(
-									new TextEncoder().encode(
-										sseEvent(
-											JSON.stringify({
-												type: 'file_changed',
-												path: fileChanged.path,
-												operation: fileChanged.operation
-											})
-										)
-									)
-								);
-							}
-
-							controller.enqueue(
-								new TextEncoder().encode(
-									sseEvent(
-										JSON.stringify({
-											type: 'tool_result',
-											id: tc.id,
-											name: tc.function.name,
-											content: toolResult,
-											error: toolError,
-											...(toolImages.length > 0 && { images: toolImages })
-										})
-									)
-								)
-							);
+							const execResult = await executeToolCall({
+								toolCall: {
+									id: tc.id,
+									name: tc.function.name,
+									arguments: tc.function.arguments
+								},
+								project: project ?? null,
+								controller,
+								encoder,
+								pendingApprovalIds,
+								signal: AbortSignal.timeout(600_000)
+							});
 
 							// Append tool result message to context
 							messages.push({
 								role: 'tool',
-								content: toolResult,
+								content: execResult.result,
 								tool_call_id: tc.id
 							});
 						}
@@ -594,9 +266,7 @@ export const POST: RequestHandler = async ({ request }) => {
 								for (let i = 0; i < doneContent.length; i += CHUNK_SIZE) {
 									const chunk = doneContent.slice(i, i + CHUNK_SIZE);
 									controller.enqueue(
-										new TextEncoder().encode(
-											sseEvent(JSON.stringify({ type: 'delta', content: chunk }))
-										)
+										encoder.encode(sseEvent(JSON.stringify({ type: 'delta', content: chunk })))
 									);
 								}
 							}
@@ -619,16 +289,14 @@ export const POST: RequestHandler = async ({ request }) => {
 						for (let i = 0; i < fullContent.length; i += CHUNK_SIZE) {
 							const chunk = fullContent.slice(i, i + CHUNK_SIZE);
 							controller.enqueue(
-								new TextEncoder().encode(
-									sseEvent(JSON.stringify({ type: 'delta', content: chunk }))
-								)
+								encoder.encode(sseEvent(JSON.stringify({ type: 'delta', content: chunk })))
 							);
 						}
 					}
 
 					if (result.usage) {
 						controller.enqueue(
-							new TextEncoder().encode(
+							encoder.encode(
 								sseEvent(
 									JSON.stringify({
 										type: 'usage',
@@ -667,7 +335,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				}
 				if (reachedLimit) {
 					controller.enqueue(
-						new TextEncoder().encode(
+						encoder.encode(
 							sseEvent(
 								JSON.stringify({
 									type: 'error',
