@@ -47,6 +47,7 @@ canvas { max-width: 100%; }
 ::selection { background: rgba(34, 211, 238, 0.2); }`;
 
 const TOOLKIT_SCRIPTS = `<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>
+<script>document.addEventListener('DOMContentLoaded',()=>{if(window.Chart){Chart.defaults.color='#a1a1aa';Chart.defaults.borderColor='#232328';}})<\/script>
 <script src="https://unpkg.com/three@0.170.0/build/three.min.js"><\/script>`;
 
 export function buildSrcdoc(html: string): string {
