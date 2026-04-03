@@ -86,7 +86,8 @@ export async function solveMath(args: {
 
 	let output = stdout.trim() || 'No output';
 	if (images.length > 0) {
-		output += `\n[${images.length} image(s) generated]`;
+		const names = images.map((i) => i.name).join(', ');
+		output += `\n[${images.length} image(s) generated and displayed to user: ${names}]`;
 	}
 
 	return { output, images };

@@ -102,7 +102,8 @@ export async function runCode(args: {
 
 		const images = collectImages(tempDir);
 		if (images.length > 0) {
-			finalOutput += `\n[${images.length} image(s) generated]`;
+			const names = images.map((i) => i.name).join(', ');
+			finalOutput += `\n[${images.length} image(s) generated and displayed to user: ${names}]`;
 		}
 
 		return { output: finalOutput, images };

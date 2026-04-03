@@ -719,15 +719,23 @@
 										<span class="text-xs font-medium text-red-400">Unsandboxed</span>
 									</div>
 								{/if}
-								<div class="mb-2 text-xs font-medium text-[var(--color-text-secondary)]">
-									Command approval required:
-								</div>
-								<pre
-									class="mb-2 overflow-x-auto rounded bg-[var(--color-surface)] p-2 font-mono text-xs text-[var(--color-text-primary)]">{@html highlightDangers(
-										approval.command,
-										approval.dangers
-									)}</pre>
-								{#if !approval.resolved}
+								{#if approval.resolved}
+									<div
+										class="text-xs font-medium {approval.approved
+											? 'text-emerald-400'
+											: 'text-red-400'}"
+									>
+										{approval.approved ? 'Approved' : 'Denied'}
+									</div>
+								{:else}
+									<div class="mb-2 text-xs font-medium text-[var(--color-text-secondary)]">
+										Command approval required:
+									</div>
+									<pre
+										class="mb-2 overflow-x-auto rounded bg-[var(--color-surface)] p-2 font-mono text-xs text-[var(--color-text-primary)]">{@html highlightDangers(
+											approval.command,
+											approval.dangers
+										)}</pre>
 									<div class="flex items-center gap-2">
 										<button
 											onclick={() => onapproval?.(approval.requestId, true)}
@@ -748,14 +756,6 @@
 											Deny
 										</button>
 									</div>
-								{:else}
-									<span
-										class="text-xs font-medium {approval.approved
-											? 'text-emerald-400'
-											: 'text-red-400'}"
-									>
-										{approval.approved ? 'Approved' : 'Denied'}
-									</span>
 								{/if}
 							</div>
 						</div>
