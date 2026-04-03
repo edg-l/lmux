@@ -483,7 +483,8 @@
 									<iframe
 										sandbox="allow-scripts allow-same-origin"
 										srcdoc={buildSrcdoc(htmlContent)}
-										class="h-[400px] w-full rounded border border-[var(--color-border)]"
+										class="min-h-[200px] w-full resize-y overflow-auto rounded border border-[var(--color-border)]"
+										style="height: 500px;"
 										title="HTML demo"
 									></iframe>
 									<button
@@ -667,7 +668,8 @@
 									<iframe
 										sandbox="allow-scripts allow-same-origin"
 										srcdoc={buildSrcdoc(htmlContent2)}
-										class="h-[400px] w-full rounded border border-[var(--color-border)]"
+										class="min-h-[200px] w-full resize-y overflow-auto rounded border border-[var(--color-border)]"
+										style="height: 500px;"
 										title="HTML demo"
 									></iframe>
 									<button
