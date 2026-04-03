@@ -122,17 +122,23 @@ export const POST: RequestHandler = async ({ request }) => {
 							{
 								method: 'POST',
 								headers: { 'Content-Type': 'application/json' },
+								signal: AbortSignal.timeout(120_000),
 								body: JSON.stringify({
 									messages: retrievalMessages,
 									stream: true,
 									stream_options: { include_usage: true },
+									max_tokens: 1024,
 									...(body.sampling && {
 										temperature: body.sampling.temperature,
 										top_p: body.sampling.top_p,
 										top_k: body.sampling.top_k,
 										min_p: body.sampling.min_p,
 										repeat_penalty: body.sampling.repeat_penalty
-									})
+									}),
+									...(body.sampling?.thinking_budget != null &&
+										body.sampling.thinking_budget > 0 && {
+											thinking_budget: body.sampling.thinking_budget
+										})
 								})
 							}
 						);
@@ -208,17 +214,23 @@ export const POST: RequestHandler = async ({ request }) => {
 					const planRes = await fetch(`http://localhost:${state.port}/v1/chat/completions`, {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
+						signal: AbortSignal.timeout(180_000),
 						body: JSON.stringify({
 							messages: planMessages,
 							stream: true,
 							stream_options: { include_usage: true },
+							max_tokens: 4096,
 							...(body.sampling && {
 								temperature: body.sampling.temperature,
 								top_p: body.sampling.top_p,
 								top_k: body.sampling.top_k,
 								min_p: body.sampling.min_p,
 								repeat_penalty: body.sampling.repeat_penalty
-							})
+							}),
+							...(body.sampling?.thinking_budget != null &&
+								body.sampling.thinking_budget > 0 && {
+									thinking_budget: body.sampling.thinking_budget
+								})
 						})
 					});
 
@@ -264,6 +276,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					const llamaRes = await fetch(`http://localhost:${state.port}/v1/chat/completions`, {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
+						signal: AbortSignal.timeout(600_000),
 						body: JSON.stringify({
 							messages,
 							stream: true,
