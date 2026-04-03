@@ -72,7 +72,11 @@ Verify and repair:
 - If a command fails, read the error output carefully, fix the issue, and run the command again
 - Do NOT stop until the build/tests pass or you have exhausted all reasonable fixes
 - If the project has a test runner (e.g., bun test, npm test, cargo test), run it after changes
-- If no tests exist, verify by running or compiling the code to check for syntax/runtime errors`;
+- If no tests exist, verify by running or compiling the code to check for syntax/runtime errors
+
+Workflow:
+- You can give intermediate updates to the user while continuing to work. If you write text explaining what you found or plan to do, the system will automatically let you continue.
+- When you are completely done with the task, call the done tool to signal completion.`;
 
 export function expandTemplateVars(
 	template: string,

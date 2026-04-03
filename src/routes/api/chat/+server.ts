@@ -583,47 +583,47 @@ export const POST: RequestHandler = async ({ request }) => {
 							});
 						}
 
+						// Check if 'done' was called - if so, emit any content and break
+						const calledDone = result.toolCalls.some((tc) => tc.function.name === 'done');
+						if (calledDone) {
+							// Emit any accompanying text content
+							if (result.content.trim()) {
+								const doneContent = result.reasoning
+									? `<think>${result.reasoning}</think>${result.content}`
+									: result.content;
+								for (let i = 0; i < doneContent.length; i += CHUNK_SIZE) {
+									const chunk = doneContent.slice(i, i + CHUNK_SIZE);
+									controller.enqueue(
+										new TextEncoder().encode(
+											sseEvent(JSON.stringify({ type: 'delta', content: chunk }))
+										)
+									);
+								}
+							}
+							reachedLimit = false;
+							break;
+						}
+
 						// Continue the loop for the model to process tool results
 						continue;
 					}
 
-					// No tool calls: if content is empty, auto-retry once with a nudge
-					if (!result.content.trim()) {
-						if (!hasRetried) {
-							hasRetried = true;
-							messages.push({
-								role: 'assistant',
-								content: ''
-							});
-							messages.push({
-								role: 'user',
-								content: 'Continue with the next step.'
-							});
-							continue;
-						}
-						// Already retried, give up
-						controller.enqueue(
-							new TextEncoder().encode(
-								sseEvent(
-									JSON.stringify({
-										type: 'delta',
-										content:
-											'[The model returned an empty response. This may indicate a context length issue or the model failing to generate output.]'
-									})
-								)
-							)
-						);
-					}
+					// No tool calls: text-only response
 
-					// Emit content in chunks for smoother UI
+					// Emit content in chunks
 					const fullContent = result.reasoning
 						? `<think>${result.reasoning}</think>${result.content}`
 						: result.content;
-					for (let i = 0; i < fullContent.length; i += CHUNK_SIZE) {
-						const chunk = fullContent.slice(i, i + CHUNK_SIZE);
-						controller.enqueue(
-							new TextEncoder().encode(sseEvent(JSON.stringify({ type: 'delta', content: chunk })))
-						);
+
+					if (fullContent.trim()) {
+						for (let i = 0; i < fullContent.length; i += CHUNK_SIZE) {
+							const chunk = fullContent.slice(i, i + CHUNK_SIZE);
+							controller.enqueue(
+								new TextEncoder().encode(
+									sseEvent(JSON.stringify({ type: 'delta', content: chunk }))
+								)
+							);
+						}
 					}
 
 					if (result.usage) {
@@ -639,6 +639,27 @@ export const POST: RequestHandler = async ({ request }) => {
 								)
 							)
 						);
+					}
+
+					// Empty response: auto-retry once
+					if (!result.content.trim()) {
+						if (!hasRetried) {
+							hasRetried = true;
+							messages.push({ role: 'assistant', content: '' });
+							messages.push({ role: 'user', content: 'Continue with the next step.' });
+							continue;
+						}
+						reachedLimit = false;
+						break;
+					}
+
+					// Tools are available: model gave an intermediate update.
+					// Emit the text, add to history, and let the model continue.
+					// The model calls 'done' when it's truly finished.
+					if (toolsEnabled && tools.length > 0) {
+						messages.push({ role: 'assistant', content: result.content });
+						messages.push({ role: 'user', content: 'Continue.' });
+						continue;
 					}
 
 					reachedLimit = false;

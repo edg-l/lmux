@@ -252,6 +252,20 @@ const codingToolDefinitions: ToolDefinition[] = [
 	}
 ];
 
+const doneToolDefinition: ToolDefinition = {
+	type: 'function',
+	function: {
+		name: 'done',
+		description:
+			'Call this when you have finished the task and have nothing more to do. This signals the end of your turn. Do NOT call this if you still have more work to do.',
+		parameters: {
+			type: 'object',
+			properties: {},
+			required: []
+		}
+	}
+};
+
 const memoryToolDefinitions: ToolDefinition[] = [
 	{
 		type: 'function',
@@ -432,6 +446,9 @@ export function getToolDefinitions(
 		tools.push(...memoryToolDefinitions);
 	}
 
+	// done tool: always available when tools are enabled
+	tools.push(doneToolDefinition);
+
 	return tools;
 }
 
@@ -582,6 +599,8 @@ export async function executeTool(
 			const result = deleteNote(filename);
 			return { result };
 		}
+		case 'done':
+			return { result: 'Task complete.' };
 		default:
 			throw new Error(`Unknown tool: ${name}`);
 	}
