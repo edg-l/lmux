@@ -480,13 +480,25 @@
 							</div>
 						{/if}
 						{#if msg.toolName === 'render_html' && msg.toolStatus === 'done' && !msg.toolError && htmlContent}
-							<div class="border-t border-cyan-500/10 p-2">
+							<div class="px-1 pb-1">
 								<div class="relative">
 									<iframe
 										sandbox="allow-scripts allow-same-origin"
 										srcdoc={buildSrcdoc(htmlContent)}
-										class="min-h-[200px] w-full resize-y overflow-auto rounded border border-[var(--color-border)]"
-										style="height: 500px;"
+										class="w-full border-0"
+										style="height: 0; overflow: hidden;"
+										onload={(e) => {
+											const iframe = e.currentTarget as HTMLIFrameElement;
+											const resize = () => {
+												try {
+													const h = iframe.contentDocument?.documentElement?.scrollHeight ?? 0;
+													if (h > 0) iframe.style.height = h + 'px';
+												} catch {}
+											};
+											resize();
+											setTimeout(resize, 500);
+											setTimeout(resize, 2000);
+										}}
 										title="HTML demo"
 									></iframe>
 									<button
@@ -665,13 +677,25 @@
 							</div>
 						{/if}
 						{#if msg.toolName === 'render_html' && !msg.toolError && htmlContent2}
-							<div class="border-t border-cyan-500/10 p-2">
+							<div class="px-1 pb-1">
 								<div class="relative">
 									<iframe
 										sandbox="allow-scripts allow-same-origin"
 										srcdoc={buildSrcdoc(htmlContent2)}
-										class="min-h-[200px] w-full resize-y overflow-auto rounded border border-[var(--color-border)]"
-										style="height: 500px;"
+										class="w-full border-0"
+										style="height: 0; overflow: hidden;"
+										onload={(e) => {
+											const iframe = e.currentTarget as HTMLIFrameElement;
+											const resize = () => {
+												try {
+													const h = iframe.contentDocument?.documentElement?.scrollHeight ?? 0;
+													if (h > 0) iframe.style.height = h + 'px';
+												} catch {}
+											};
+											resize();
+											setTimeout(resize, 500);
+											setTimeout(resize, 2000);
+										}}
 										title="HTML demo"
 									></iframe>
 									<button
