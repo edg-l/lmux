@@ -224,7 +224,9 @@
 		if (!toolArgs) return null;
 		try {
 			const parsed = JSON.parse(toolArgs);
-			return typeof parsed.html === 'string' && parsed.html.length > 0 ? parsed.html : null;
+			if (typeof parsed.html !== 'string' || parsed.html.length === 0) return null;
+			// Fix common LLM escape issues: \` -> ` and \$ -> $ in script blocks
+			return parsed.html.replace(/\\`/g, '`').replace(/\\\$/g, '$');
 		} catch {
 			return null;
 		}
