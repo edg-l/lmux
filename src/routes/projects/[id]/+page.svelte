@@ -481,9 +481,7 @@
 						);
 					} else if (status === 'done') {
 						messages = messages.map((m, i) =>
-							i === messages.length - 1 && m.role === 'assistant'
-								? { ...m, content: '' }
-								: m
+							i === messages.length - 1 && m.role === 'assistant' ? { ...m, content: '' } : m
 						);
 					}
 				},

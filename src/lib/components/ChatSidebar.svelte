@@ -64,9 +64,7 @@
 <div
 	class="flex w-56 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-elevated)]"
 >
-	<div
-		class="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2.5"
-	>
+	<div class="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2.5">
 		<span class="text-xs font-medium text-[var(--color-text-muted)]">Conversations</span>
 		<button
 			onclick={onNewConversation}

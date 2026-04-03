@@ -159,14 +159,44 @@ export interface GenerationConfig {
 }
 
 /**
+ * Fetch the base_model field from a HuggingFace repo's card metadata.
+ * Returns null on any error or if the field is not present.
+ */
+export async function fetchBaseModelRepo(repoId: string): Promise<string | null> {
+	try {
+		const res = await hfFetch(`${HF_API_BASE}/models/${repoId}`);
+		if (!res.ok) {
+			res.body?.cancel();
+			return null;
+		}
+		const data = await res.json();
+		const baseModel = data.cardData?.base_model;
+		if (typeof baseModel === 'string') return baseModel;
+		if (Array.isArray(baseModel) && typeof baseModel[0] === 'string') return baseModel[0];
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Fetch generation_config.json from a HuggingFace repo.
  * Returns null on 404 or any error.
+ * If followBaseModel is true and the direct fetch returns null, follows the base_model
+ * chain one level to find the config in the source repo.
  */
-export async function fetchGenerationConfig(repoId: string): Promise<GenerationConfig | null> {
+export async function fetchGenerationConfig(
+	repoId: string,
+	followBaseModel = true
+): Promise<GenerationConfig | null> {
 	try {
 		const res = await hfFetch(`https://huggingface.co/${repoId}/raw/main/generation_config.json`);
 		if (!res.ok) {
 			res.body?.cancel();
+			if (followBaseModel) {
+				const baseRepo = await fetchBaseModelRepo(repoId);
+				if (baseRepo) return fetchGenerationConfig(baseRepo, false);
+			}
 			return null;
 		}
 		const data = await res.json();
@@ -177,7 +207,12 @@ export async function fetchGenerationConfig(repoId: string): Promise<GenerationC
 		if (typeof data.min_p === 'number') config.min_p = data.min_p;
 		if (typeof data.repetition_penalty === 'number')
 			config.repetition_penalty = data.repetition_penalty;
-		return Object.keys(config).length > 0 ? config : null;
+		if (Object.keys(config).length > 0) return config;
+		if (followBaseModel) {
+			const baseRepo = await fetchBaseModelRepo(repoId);
+			if (baseRepo) return fetchGenerationConfig(baseRepo, false);
+		}
+		return null;
 	} catch {
 		return null;
 	}

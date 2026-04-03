@@ -32,6 +32,8 @@
 		onApplyPreset: (preset: PresetInfo) => void;
 		onDeletePreset: (id: number) => void;
 		onSaveAsPreset: () => void;
+		defaultPresetId: number | null;
+		onSetDefaultPreset: (presetId: number | null) => void;
 	}
 
 	let {
@@ -54,7 +56,9 @@
 		onSave,
 		onApplyPreset,
 		onDeletePreset,
-		onSaveAsPreset
+		onSaveAsPreset,
+		defaultPresetId,
+		onSetDefaultPreset
 	}: Props = $props();
 </script>
 
@@ -108,11 +112,23 @@
 											class="flex-1 text-left text-xs text-[var(--color-text-secondary)]"
 											>{preset.name}</button
 										>
-										<button
-											onclick={() => onDeletePreset(preset.id)}
-											class="text-xs text-[var(--color-text-muted)] opacity-0 group-hover/preset:opacity-100 hover:text-red-400"
-											>x</button
-										>
+										<div class="flex items-center gap-1">
+											<button
+												onclick={() =>
+													onSetDefaultPreset(preset.id === defaultPresetId ? null : preset.id)}
+												class="text-xs transition-colors {preset.id === defaultPresetId
+													? 'text-[var(--color-accent)]'
+													: 'text-[var(--color-text-muted)] opacity-0 group-hover/preset:opacity-100 hover:text-[var(--color-accent)]'}"
+												title={preset.id === defaultPresetId
+													? 'Unset as default'
+													: 'Set as default for model'}>&#9733;</button
+											>
+											<button
+												onclick={() => onDeletePreset(preset.id)}
+												class="text-xs text-[var(--color-text-muted)] opacity-0 group-hover/preset:opacity-100 hover:text-red-400"
+												>x</button
+											>
+										</div>
 									</div>
 								{/each}
 							{/if}

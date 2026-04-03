@@ -1,0 +1,1 @@
+ALTER TABLE models ADD COLUMN default_preset_id INTEGER REFERENCES presets(id) ON DELETE SET NULL;

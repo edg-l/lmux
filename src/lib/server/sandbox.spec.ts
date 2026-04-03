@@ -48,9 +48,8 @@ mock.module('/data2/edgar/lmux/src/lib/server/db.ts', () => ({
 }));
 
 // Dynamic imports so the mock above is already registered when these modules load.
-const { buildSandboxedCommand, parsePermissionDeniedPaths, isLandlockAvailable } = await import(
-	'./sandbox.ts'
-);
+const { buildSandboxedCommand, parsePermissionDeniedPaths, isLandlockAvailable } =
+	await import('./sandbox.ts');
 const {
 	getWritablePaths,
 	addWritablePath,
@@ -155,10 +154,7 @@ describe('buildSandboxedCommand extraWritablePaths', () => {
 	});
 
 	it('multiple non-existent extra paths are all silently skipped', () => {
-		const result = buildSandboxedCommand('/project', 'ls', [
-			'/no/such/path/a',
-			'/no/such/path/b'
-		]);
+		const result = buildSandboxedCommand('/project', 'ls', ['/no/such/path/a', '/no/such/path/b']);
 		expect(result).toBeTruthy();
 	});
 
@@ -264,9 +260,7 @@ describe('parsePermissionDeniedPaths', () => {
 	});
 
 	it('handles a deeply nested path correctly', () => {
-		const paths = parsePermissionDeniedPaths(
-			"'/a/b/c/d/e/f/g.txt': Permission denied"
-		);
+		const paths = parsePermissionDeniedPaths("'/a/b/c/d/e/f/g.txt': Permission denied");
 		expect(paths).toContain('/a/b/c/d/e/f');
 	});
 });

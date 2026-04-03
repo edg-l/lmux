@@ -126,6 +126,8 @@
 
 	// Toolbar overflow menu
 
+	let defaultPresetId: number | null = $state(null);
+
 	// Feature 11: Prompt presets
 	interface PresetInfo {
 		id: number;
@@ -243,6 +245,22 @@
 		} catch {
 			// defaults
 		}
+		// Load default preset and auto-apply if no user override
+		try {
+			const dpRes = await fetch(`/api/models/${modelId}/default-preset`);
+			if (dpRes.ok) {
+				const dpData = await dpRes.json();
+				defaultPresetId = dpData.default_preset_id;
+				if (defaultPresetId != null && samplingSource === 'default') {
+					if (presets.length === 0) await loadPresets();
+					const preset = presets.find((p) => p.id === defaultPresetId);
+					if (preset) applyPreset(preset);
+				}
+			}
+		} catch {
+			// ignore
+		}
+		// Load system prompt
 		try {
 			const spRes = await fetch(`/api/models/${modelId}/system-prompt`);
 			if (spRes.ok) {
@@ -785,6 +803,21 @@
 		try {
 			await fetch(`/api/presets/${id}`, { method: 'DELETE' });
 			await loadPresets();
+			if (defaultPresetId === id) defaultPresetId = null;
+		} catch {
+			// ignore
+		}
+	}
+
+	async function setAsDefaultPreset(presetId: number | null) {
+		if (!samplingModelId) return;
+		try {
+			await fetch(`/api/models/${samplingModelId}/default-preset`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ preset_id: presetId })
+			});
+			defaultPresetId = presetId;
 		} catch {
 			// ignore
 		}
@@ -1090,6 +1123,8 @@
 				onApplyPreset={applyPreset}
 				onDeletePreset={deletePresetById}
 				onSaveAsPreset={saveAsPreset}
+				{defaultPresetId}
+				onSetDefaultPreset={setAsDefaultPreset}
 			/>
 		{/if}
 

@@ -4,13 +4,13 @@ import { homedir } from 'node:os';
 
 // Common toolchain directories that build tools need write access to
 const TOOLCHAIN_WRITABLE_DIRS = [
-	'.cargo',      // Rust: cargo registry, git checkouts
-	'.rustup',     // Rust: toolchain management
-	'.cache',      // General: pip, bun, go build cache, etc.
-	'.npm',        // Node: npm cache
-	'.bun',        // Bun: bun cache
+	'.cargo', // Rust: cargo registry, git checkouts
+	'.rustup', // Rust: toolchain management
+	'.cache', // General: pip, bun, go build cache, etc.
+	'.npm', // Node: npm cache
+	'.bun', // Bun: bun cache
 	'.local/share', // General: various tools
-	'go',          // Go: GOPATH default
+	'go' // Go: GOPATH default
 ];
 
 let landLockAvailable: boolean | null = null;

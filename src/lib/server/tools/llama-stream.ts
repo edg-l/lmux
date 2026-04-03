@@ -6,6 +6,7 @@ export interface ToolCall {
 
 export interface StreamResult {
 	content: string;
+	reasoning: string;
 	toolCalls: ToolCall[];
 	usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null;
 }
@@ -15,6 +16,7 @@ export async function consumeLlamaStream(body: ReadableStream<Uint8Array>): Prom
 	const reader = body.getReader();
 	let buffer = '';
 	let content = '';
+	let reasoning = '';
 	const toolCallMap = new Map<number, { id: string; name: string; arguments: string }>();
 	let usage: StreamResult['usage'] = null;
 
@@ -37,6 +39,10 @@ export async function consumeLlamaStream(body: ReadableStream<Uint8Array>): Prom
 
 				if (choice?.delta?.content) {
 					content += choice.delta.content;
+				}
+
+				if (choice?.delta?.reasoning_content) {
+					reasoning += choice.delta.reasoning_content;
 				}
 
 				if (choice?.delta?.tool_calls) {
@@ -81,5 +87,5 @@ export async function consumeLlamaStream(body: ReadableStream<Uint8Array>): Prom
 			function: { name: tc.name, arguments: tc.arguments }
 		}));
 
-	return { content, toolCalls, usage };
+	return { content, reasoning, toolCalls, usage };
 }

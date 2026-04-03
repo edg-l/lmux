@@ -75,11 +75,20 @@
 				</button>
 				{#if onDelete}
 					<button
-						onclick={(e) => { e.stopPropagation(); onDelete(conv.id); }}
-						class="shrink-0 px-1.5 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+						onclick={(e) => {
+							e.stopPropagation();
+							onDelete(conv.id);
+						}}
+						class="shrink-0 px-1.5 text-[var(--color-text-muted)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-400"
 						title="Delete session"
 					>
-						<svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+						<svg
+							class="h-3 w-3"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+							stroke-width="2"
+						>
 							<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
 						</svg>
 					</button>

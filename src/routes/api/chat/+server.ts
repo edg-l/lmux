@@ -96,8 +96,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				// Planning pass: when plan_enabled and project_id, generate a plan first
 				// Skip planning on continuations (when previous message is assistant/tool)
 				const prevMsg = normalized.length >= 2 ? normalized[normalized.length - 2] : null;
-				const isContinuation =
-					prevMsg?.role === 'assistant' || prevMsg?.role === 'tool';
+				const isContinuation = prevMsg?.role === 'assistant' || prevMsg?.role === 'tool';
 				if (body.plan_enabled && body.project_id && !isContinuation) {
 					// Pass 0: Retrieval - get codebase context for the planning prompt
 					controller.enqueue(
@@ -117,31 +116,28 @@ export const POST: RequestHandler = async ({ request }) => {
 							...normalized
 						];
 
-						const retrievalRes = await fetch(
-							`http://localhost:${state.port}/v1/chat/completions`,
-							{
-								method: 'POST',
-								headers: { 'Content-Type': 'application/json' },
-								signal: AbortSignal.timeout(120_000),
-								body: JSON.stringify({
-									messages: retrievalMessages,
-									stream: true,
-									stream_options: { include_usage: true },
-									max_tokens: 1024,
-									...(body.sampling && {
-										temperature: body.sampling.temperature,
-										top_p: body.sampling.top_p,
-										top_k: body.sampling.top_k,
-										min_p: body.sampling.min_p,
-										repeat_penalty: body.sampling.repeat_penalty
-									}),
-									...(body.sampling?.thinking_budget != null &&
-										body.sampling.thinking_budget > 0 && {
-											thinking_budget: body.sampling.thinking_budget
-										})
-								})
-							}
-						);
+						const retrievalRes = await fetch(`http://localhost:${state.port}/v1/chat/completions`, {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							signal: AbortSignal.timeout(120_000),
+							body: JSON.stringify({
+								messages: retrievalMessages,
+								stream: true,
+								stream_options: { include_usage: true },
+								max_tokens: 1024,
+								...(body.sampling && {
+									temperature: body.sampling.temperature,
+									top_p: body.sampling.top_p,
+									top_k: body.sampling.top_k,
+									min_p: body.sampling.min_p,
+									repeat_penalty: body.sampling.repeat_penalty
+								}),
+								...(body.sampling?.thinking_budget != null &&
+									body.sampling.thinking_budget > 0 && {
+										thinking_budget: body.sampling.thinking_budget
+									})
+							})
+						});
 
 						if (retrievalRes.ok && retrievalRes.body) {
 							const retrievalResult = await consumeLlamaStream(retrievalRes.body);
@@ -153,10 +149,7 @@ export const POST: RequestHandler = async ({ request }) => {
 								const snippets: string[] = [];
 
 								for (const term of searchTerms) {
-									const results = await searchProjectFiles(
-										{ pattern: term },
-										project!.path
-									);
+									const results = await searchProjectFiles({ pattern: term }, project!.path);
 									if (results === 'No matches found.') continue;
 
 									// Extract unique file paths from rg output (path:line:content)
@@ -195,9 +188,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 					controller.enqueue(
 						new TextEncoder().encode(
-							sseEvent(
-								JSON.stringify({ type: 'retrieval_status', status: 'done' })
-							)
+							sseEvent(JSON.stringify({ type: 'retrieval_status', status: 'done' }))
 						)
 					);
 
@@ -561,9 +552,11 @@ export const POST: RequestHandler = async ({ request }) => {
 					}
 
 					// Emit content in chunks for smoother UI
-					const content = result.content;
-					for (let i = 0; i < content.length; i += CHUNK_SIZE) {
-						const chunk = content.slice(i, i + CHUNK_SIZE);
+					const fullContent = result.reasoning
+						? `<think>${result.reasoning}</think>${result.content}`
+						: result.content;
+					for (let i = 0; i < fullContent.length; i += CHUNK_SIZE) {
+						const chunk = fullContent.slice(i, i + CHUNK_SIZE);
 						controller.enqueue(
 							new TextEncoder().encode(sseEvent(JSON.stringify({ type: 'delta', content: chunk })))
 						);

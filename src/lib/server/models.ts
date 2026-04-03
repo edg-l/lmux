@@ -22,6 +22,7 @@ export interface ModelRow {
 	mmproj_files: string;
 	created_at: string;
 	system_prompt: string | null;
+	default_preset_id: number | null;
 }
 
 export interface ProfileRow {
@@ -372,6 +373,21 @@ export function deleteModel(id: number): string | null {
 
 	execute('DELETE FROM models WHERE id = $id', { $id: id });
 	return model.filepath;
+}
+
+export function getDefaultPresetId(modelId: number): number | null {
+	const row = queryOne<{ default_preset_id: number | null }>(
+		'SELECT default_preset_id FROM models WHERE id = $id',
+		{ $id: modelId }
+	);
+	return row?.default_preset_id ?? null;
+}
+
+export function setDefaultPresetId(modelId: number, presetId: number | null): void {
+	execute('UPDATE models SET default_preset_id = $preset_id WHERE id = $id', {
+		$preset_id: presetId,
+		$id: modelId
+	});
 }
 
 // --- Profiles CRUD ---

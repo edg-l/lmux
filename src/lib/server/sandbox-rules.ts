@@ -20,7 +20,9 @@ export function getApprovedCommands(): string[] {
 }
 
 export function addApprovedCommand(pattern: string): void {
-	execute('INSERT OR IGNORE INTO approved_commands (pattern) VALUES ($pattern)', { $pattern: pattern });
+	execute('INSERT OR IGNORE INTO approved_commands (pattern) VALUES ($pattern)', {
+		$pattern: pattern
+	});
 }
 
 export function removeApprovedCommand(id: number): void {
