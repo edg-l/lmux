@@ -24,6 +24,7 @@ import { isLandlockAvailable } from '$lib/server/sandbox';
 import { getProject } from '$lib/server/projects';
 import { isCommandApproved, recordApprovalResult } from '$lib/server/sandbox-rules';
 import { homedir } from 'node:os';
+import { buildMemoryContext } from '$lib/server/tools/memory';
 
 interface ChatMessage {
 	role: string;
@@ -61,6 +62,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		model_id?: number | null;
 		project_id?: number | null;
 		plan_enabled?: boolean;
+		memory_enabled?: boolean;
 	};
 
 	if (!body.messages || !Array.isArray(body.messages)) {
@@ -71,10 +73,13 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	const toolsEnabled = body.tools_enabled !== false && getSetting('tools_enabled') !== 'false';
+	const memoryEnabled =
+		body.memory_enabled !== undefined
+			? body.memory_enabled !== false
+			: getSetting('memory_enabled') !== 'false';
 	const project = body.project_id ? (getProject(body.project_id) ?? undefined) : undefined;
-	const tools = toolsEnabled ? getToolDefinitions(project) : [];
-
 	const resolvedModelId = body.model_id ?? state.modelId ?? null;
+	const tools = toolsEnabled ? getToolDefinitions(project, memoryEnabled) : [];
 	const systemPrompt = resolveSystemPrompt(resolvedModelId, project);
 
 	const stream = new ReadableStream({
@@ -256,6 +261,13 @@ export const POST: RequestHandler = async ({ request }) => {
 					}
 				}
 
+				if (memoryEnabled && effectiveSystemPrompt !== null) {
+					const memoryContext = buildMemoryContext();
+					if (memoryContext) {
+						effectiveSystemPrompt = effectiveSystemPrompt + memoryContext;
+					}
+				}
+
 				const messages: ChatMessage[] = effectiveSystemPrompt
 					? [{ role: 'system', content: effectiveSystemPrompt }, ...normalized]
 					: [...normalized];
@@ -428,6 +440,51 @@ export const POST: RequestHandler = async ({ request }) => {
 										toolError = execResult.error ?? false;
 										fileChanged = execResult.fileChanged;
 										blockedPaths = execResult.blockedPaths ?? [];
+									} catch (e) {
+										toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
+										toolError = true;
+									}
+								}
+							} else if (tc.function.name === 'run_code') {
+								const lang = typeof args.language === 'string' ? args.language : 'unknown';
+								const code = typeof args.code === 'string' ? args.code : '';
+								const displayString = `[${lang}] ${code.slice(0, 500)}`;
+
+								const requestId = crypto.randomUUID();
+								pendingApprovalIds.push(requestId);
+
+								controller.enqueue(
+									new TextEncoder().encode(
+										sseEvent(
+											JSON.stringify({
+												type: 'approval_request',
+												requestId,
+												command: displayString,
+												dangers: [],
+												sandboxed: isLandlockAvailable()
+											})
+										)
+									)
+								);
+
+								const approvalResult = await requestApproval(requestId, displayString);
+								const idx = pendingApprovalIds.indexOf(requestId);
+								if (idx !== -1) pendingApprovalIds.splice(idx, 1);
+
+								recordApprovalResult('run_code:' + lang, approvalResult);
+
+								if (approvalResult === 'timeout') {
+									toolResult = 'Code execution approval timed out';
+									toolError = true;
+								} else if (approvalResult === 'denied') {
+									toolResult = 'Code execution denied by user';
+									toolError = true;
+								} else {
+									try {
+										const execResult = await executeTool(tc.function.name, args, project);
+										toolResult = execResult.result;
+										toolError = execResult.error ?? false;
+										fileChanged = execResult.fileChanged;
 									} catch (e) {
 										toolResult = `Error: ${e instanceof Error ? e.message : 'tool execution failed'}`;
 										toolError = true;

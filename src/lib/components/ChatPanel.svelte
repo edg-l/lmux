@@ -10,6 +10,7 @@
 		getToolSummary,
 		getToolLabel,
 		getToolElapsed,
+		getToolOutputPreview,
 		highlightDangers
 	} from '$lib/utils/chat';
 
@@ -414,6 +415,14 @@
 							<div class="border-t border-red-500/10 px-2.5 py-1.5">
 								<p class="text-xs text-red-400">{msg.content}</p>
 							</div>
+						{:else if !isExpanded && msg.toolStatus === 'done' && getToolOutputPreview(msg.toolName, msg.content)}
+							<div class="border-t border-cyan-500/10 px-2.5 py-1.5">
+								<pre
+									class="font-mono text-xs leading-relaxed whitespace-pre-wrap text-[var(--color-text-muted)]">{getToolOutputPreview(
+										msg.toolName,
+										msg.content
+									)}</pre>
+							</div>
 						{/if}
 						{#if isExpanded}
 							<div class="space-y-1 border-t border-cyan-500/10 px-2.5 py-1.5">
@@ -539,6 +548,14 @@
 						{:else if msg.toolError && msg.content}
 							<div class="border-t border-red-500/10 px-2.5 py-1.5">
 								<p class="text-xs text-red-400">{msg.content}</p>
+							</div>
+						{:else if !isExpanded && getToolOutputPreview(msg.toolName, msg.content)}
+							<div class="border-t border-cyan-500/10 px-2.5 py-1.5">
+								<pre
+									class="font-mono text-xs leading-relaxed whitespace-pre-wrap text-[var(--color-text-muted)]">{getToolOutputPreview(
+										msg.toolName,
+										msg.content
+									)}</pre>
 							</div>
 						{/if}
 						{#if isExpanded}

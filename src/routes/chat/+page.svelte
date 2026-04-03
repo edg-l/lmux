@@ -81,6 +81,7 @@
 
 	// Tool calling state
 	let toolsEnabled = $state(true);
+	let memoryEnabled = $state(true);
 
 	// Feature 1: Conversation search
 	let searchQuery = $state('');
@@ -211,6 +212,7 @@
 			if (res.ok) {
 				const settings = await res.json();
 				toolsEnabled = settings.tools_enabled !== 'false';
+				memoryEnabled = settings.memory_enabled !== 'false';
 			}
 		} catch {
 			// default true
@@ -502,6 +504,7 @@
 						thinking_budget: thinkingBudget
 					},
 					tools_enabled: toolsEnabled,
+					memory_enabled: memoryEnabled,
 					model_id: serverInfo?.modelId ?? null
 				}),
 				signal: controller.signal
@@ -560,7 +563,24 @@
 				onUsage: (usage) => {
 					tokenUsage = usage;
 				},
-				getMessageCount: () => messages.length
+				getMessageCount: () => messages.length,
+				onApprovalRequest: (data) => {
+					messages = [
+						...messages,
+						{
+							role: 'approval',
+							content: '',
+							approval: {
+								requestId: data.requestId,
+								command: data.command,
+								dangers: data.dangers,
+								sandboxed: data.sandboxed,
+								resolved: false,
+								approved: null
+							}
+						}
+					];
+				}
 			});
 
 			// Persist tool messages
@@ -589,6 +609,31 @@
 
 	function stopGeneration() {
 		abortController?.abort();
+	}
+
+	async function handleApproval(requestId: string, approved: boolean, remember = false) {
+		try {
+			const res = await fetch('/api/approve', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ requestId, approved, remember })
+			});
+			if (!res.ok) {
+				console.error('Approval request failed:', res.status);
+			}
+		} catch (e) {
+			console.error('Approval request failed:', e);
+			return;
+		}
+		messages = messages.map((m) => {
+			if (m.approval?.requestId === requestId) {
+				return {
+					...m,
+					approval: { ...m.approval, resolved: true, approved }
+				};
+			}
+			return m;
+		});
 	}
 
 	let activeConversation = $derived(
@@ -1004,6 +1049,31 @@
 				</svg>
 			</button>
 
+			<!-- Memory toggle (note icon) -->
+			{#if toolsEnabled}
+				<button
+					onclick={() => (memoryEnabled = !memoryEnabled)}
+					class="rounded p-1.5 transition-colors {memoryEnabled
+						? 'text-[var(--color-accent)]'
+						: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
+					title={memoryEnabled ? 'Memory enabled' : 'Memory disabled'}
+				>
+					<svg
+						class="h-5 w-5"
+						fill="none"
+						stroke="currentColor"
+						viewBox="0 0 24 24"
+						stroke-width="1.5"
+					>
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+						/>
+					</svg>
+				</button>
+			{/if}
+
 			<!-- Sampling toggle -->
 			<button
 				onclick={() => (samplingOpen = !samplingOpen)}
@@ -1142,7 +1212,8 @@
 			{serverInfo}
 			{tokenUsage}
 			collapsibleThinking={true}
-			showApprovals={false}
+			showApprovals={true}
+			onapproval={handleApproval}
 			disabled={streaming || serverInfo?.status !== 'ready' || modelMismatch || modelDeleted}
 			placeholder={serverInfo?.status === 'ready'
 				? 'Message...'

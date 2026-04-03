@@ -15,6 +15,7 @@
 	let searxngStatus: 'idle' | 'checking' | 'ok' | 'error' = $state('idle');
 	let searxngError = $state('');
 	let landlockAvailable: boolean | null = $state(null);
+	let memoryEnabled = $state(true);
 
 	// Sandbox rules state
 	let writablePaths = $state<Array<{ id: number; path: string; created_at: string }>>([]);
@@ -85,6 +86,7 @@
 				searxngUrl = settings.searxng_url ?? '';
 				kvCacheDir = settings.kv_cache_dir ?? '';
 				systemPrompt = settings.system_prompt ?? '';
+				memoryEnabled = settings.memory_enabled !== 'false';
 			}
 		} finally {
 			loading = false;
@@ -317,6 +319,52 @@
 						)}"
 					>
 						{saveButtonLabel('system_prompt')}
+					</button>
+				</div>
+			</div>
+
+			<!-- Model Memory -->
+			<div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] p-5">
+				<div class="flex items-center justify-between">
+					<div>
+						<h2
+							class="text-xs font-semibold tracking-wide text-[var(--color-text-muted)] uppercase"
+						>
+							Model Memory
+						</h2>
+						<p class="mt-1 text-xs text-[var(--color-text-muted)]">
+							Allow models to store and recall notes across conversations. Notes are saved per model
+							in <code class="font-mono text-[var(--color-text-secondary)]"
+								>~/.local/share/lmux/notes/</code
+							>.
+						</p>
+					</div>
+					<button
+						onclick={async () => {
+							memoryEnabled = !memoryEnabled;
+							try {
+								await fetch('/api/settings', {
+									method: 'PUT',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										key: 'memory_enabled',
+										value: memoryEnabled ? 'true' : 'false'
+									})
+								});
+							} catch {
+								memoryEnabled = !memoryEnabled;
+							}
+						}}
+						title={memoryEnabled ? 'Disable model memory' : 'Enable model memory'}
+						class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors {memoryEnabled
+							? 'bg-[var(--color-accent)]'
+							: 'bg-[var(--color-border)]'}"
+					>
+						<span
+							class="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform {memoryEnabled
+								? 'translate-x-4.5'
+								: 'translate-x-0.5'}"
+						></span>
 					</button>
 				</div>
 			</div>

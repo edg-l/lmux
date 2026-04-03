@@ -15,7 +15,8 @@ const DEFAULTS: Record<string, string> = {
 	tools_enabled: 'true',
 	searxng_url: '',
 	kv_cache_dir: DEFAULT_KV_CACHE_DIR,
-	system_prompt: 'You are a helpful assistant. Current date: {{date}} ({{day}})'
+	system_prompt: 'You are a helpful assistant. Current date: {{date}} ({{day}})',
+	memory_enabled: 'true'
 };
 
 export function getSetting(key: string): string {

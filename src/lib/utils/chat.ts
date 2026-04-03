@@ -69,11 +69,16 @@ const TOOL_LABELS: Record<string, string> = {
 	list_directory: 'Listing',
 	search_files: 'Searching',
 	run_command: 'Running',
+	run_code: 'Running code',
+	solve_math: 'Solving',
 	start_process: 'Starting',
 	stop_process: 'Stopping',
 	list_processes: 'Processes',
 	fetch_url: 'Fetching',
-	web_search: 'Searching'
+	web_search: 'Searching',
+	memory_read: 'Reading memory',
+	memory_write: 'Saving memory',
+	memory_delete: 'Deleting memory'
 };
 
 export function getToolLabel(toolName: string | undefined): string {
@@ -85,6 +90,25 @@ export function getToolElapsed(content: string | undefined): string | null {
 	if (!content) return null;
 	const match = content.match(/\[exit \d+, ([^\]]+)\]\s*$/);
 	return match ? match[1] : null;
+}
+
+export function getToolOutputPreview(
+	toolName: string | undefined,
+	content: string | undefined
+): string | null {
+	if (!content || !toolName) return null;
+	if (toolName !== 'run_code' && toolName !== 'solve_math') return null;
+	// Strip trailing metadata lines like [exit 0, 23ms] and [truncated, ...]
+	const cleaned = content
+		.replace(/\n?\[(?:exit |truncated,|command timed)[^\]]*\]\s*$/g, '')
+		.trim();
+	if (!cleaned) return null;
+	// Take first 3 lines, max 200 chars
+	const lines = cleaned.split('\n').slice(0, 3);
+	let preview = lines.join('\n');
+	if (preview.length > 200) preview = preview.slice(0, 200) + '...';
+	else if (cleaned.split('\n').length > 3) preview += '\n...';
+	return preview;
 }
 
 export function getToolSummary(toolName: string | undefined, toolArgs: string | undefined): string {
@@ -100,9 +124,15 @@ export function getToolSummary(toolName: string | undefined, toolArgs: string | 
 		if (toolName === 'search_files' && args.pattern)
 			return `"${args.pattern}"${args.glob ? ` (${args.glob})` : ''}`;
 		if (toolName === 'list_directory') return args.path || '/';
+		if (toolName === 'run_code' && args.language) return args.language;
+		if (toolName === 'solve_math') return '';
 		if (toolName === 'start_process' && args.command) return args.command.slice(0, 60);
 		if (toolName === 'stop_process' && args.id) return args.id;
 		if (toolName === 'list_processes') return '';
+		if (toolName === 'memory_read' && args.filename) return args.filename;
+		if (toolName === 'memory_read') return 'list';
+		if (toolName === 'memory_write' && args.filename) return args.filename;
+		if (toolName === 'memory_delete' && args.filename) return args.filename;
 		return '';
 	} catch {
 		return '';

@@ -56,6 +56,9 @@
 		Array<{ id: string; command: string; startedAt: string; running: boolean }>
 	>([]);
 
+	// Memory state
+	let memoryEnabled = $state(true);
+
 	// Planning state
 	let planEnabled = $state(true);
 	let planText = $state('');
@@ -110,11 +113,24 @@
 
 	let cleanupServerInfo: (() => void) | null = null;
 
+	async function loadMemoryEnabled() {
+		try {
+			const res = await fetch('/api/settings');
+			if (res.ok) {
+				const settings = await res.json();
+				memoryEnabled = settings.memory_enabled !== 'false';
+			}
+		} catch {
+			// default true
+		}
+	}
+
 	onMount(() => {
 		loadProject();
 		loadFiles();
 		loadGitStatus();
 		fetchProcesses();
+		loadMemoryEnabled();
 		cleanupServerInfo = connectServerInfo();
 
 		function handleGlobalKeydown(e: KeyboardEvent) {
@@ -371,6 +387,7 @@
 						thinking_budget: thinkingBudget
 					},
 					tools_enabled: true,
+					memory_enabled: memoryEnabled,
 					model_id: serverInfo?.modelId ?? null,
 					project_id: projectId,
 					plan_enabled: planEnabled
@@ -786,6 +803,28 @@
 									</svg>
 									Plan
 								</button>
+								<button
+									onclick={() => (memoryEnabled = !memoryEnabled)}
+									class="flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors {memoryEnabled
+										? 'bg-[var(--color-accent-subtle,var(--color-surface))] text-[var(--color-accent)]'
+										: 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}"
+									title={memoryEnabled ? 'Memory enabled' : 'Memory disabled'}
+								>
+									<svg
+										class="h-3.5 w-3.5"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										stroke-width="1.5"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+										/>
+									</svg>
+									Memory
+								</button>
 							</div>
 						{/snippet}
 					</ChatPanel>
@@ -832,6 +871,40 @@
 									: 'bg-[var(--color-surface)] text-[var(--color-text-muted)]'}"
 							>
 								{planEnabled ? 'ON' : 'OFF'}
+							</span>
+						</button>
+					</div>
+
+					<!-- Memory toggle -->
+					<div class="border-b border-[var(--color-border)] px-3 py-3">
+						<button
+							onclick={() => (memoryEnabled = !memoryEnabled)}
+							class="flex w-full items-center justify-between rounded px-2 py-1.5 text-xs font-medium transition-colors {memoryEnabled
+								? 'bg-[var(--color-accent-subtle,var(--color-surface))] text-[var(--color-accent)]'
+								: 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-text-secondary)]'}"
+						>
+							<span class="flex items-center gap-1.5">
+								<svg
+									class="h-3.5 w-3.5"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+									stroke-width="1.5"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+									/>
+								</svg>
+								Memory
+							</span>
+							<span
+								class="rounded px-1.5 py-0.5 text-[10px] font-medium {memoryEnabled
+									? 'bg-[var(--color-accent)] text-white'
+									: 'bg-[var(--color-surface)] text-[var(--color-text-muted)]'}"
+							>
+								{memoryEnabled ? 'ON' : 'OFF'}
 							</span>
 						</button>
 					</div>

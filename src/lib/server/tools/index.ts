@@ -10,6 +10,9 @@ import { runProjectCommand } from './run-command';
 import { startBackgroundProcess } from './start-process';
 import { stopBackgroundProcess } from './stop-process';
 import { listBackgroundProcesses } from './list-processes';
+import { solveMath } from './solve-math';
+import { runCode } from './run-code';
+import { validateNoteFilename, readNote, writeNote, deleteNote, listNotes } from './memory';
 
 export interface ToolDefinition {
 	type: 'function';
@@ -247,7 +250,68 @@ const codingToolDefinitions: ToolDefinition[] = [
 	}
 ];
 
-export function getToolDefinitions(project?: { id: number; path: string }): ToolDefinition[] {
+const memoryToolDefinitions: ToolDefinition[] = [
+	{
+		type: 'function',
+		function: {
+			name: 'memory_read',
+			description:
+				'Read a note from model memory, or list all notes if no filename given. Filename must end in .md.',
+			parameters: {
+				type: 'object',
+				properties: {
+					filename: {
+						type: 'string',
+						description: 'Name of the note file to read (e.g. MEMORY.md). Omit to list all notes.'
+					}
+				},
+				required: []
+			}
+		}
+	},
+	{
+		type: 'function',
+		function: {
+			name: 'memory_write',
+			description:
+				'Write/update a note in model memory. Filename must end in .md. A one-line summary is automatically added to MEMORY.md as an index entry. Do NOT write to MEMORY.md directly unless you want to edit the instructions or index manually.',
+			parameters: {
+				type: 'object',
+				properties: {
+					filename: { type: 'string', description: 'Name of the note file (must end in .md)' },
+					content: { type: 'string', description: 'Content to write to the note' },
+					summary: {
+						type: 'string',
+						description: 'One-line summary of this note (added to MEMORY.md index automatically)'
+					}
+				},
+				required: ['filename', 'content', 'summary']
+			}
+		}
+	},
+	{
+		type: 'function',
+		function: {
+			name: 'memory_delete',
+			description: 'Delete a note from model memory. Filename must end in .md.',
+			parameters: {
+				type: 'object',
+				properties: {
+					filename: {
+						type: 'string',
+						description: 'Name of the note file to delete (must end in .md)'
+					}
+				},
+				required: ['filename']
+			}
+		}
+	}
+];
+
+export function getToolDefinitions(
+	project?: { id: number; path: string },
+	memoryEnabled?: boolean
+): ToolDefinition[] {
 	const tools: ToolDefinition[] = [
 		{
 			type: 'function',
@@ -285,11 +349,66 @@ export function getToolDefinitions(project?: { id: number; path: string }): Tool
 					required: ['query']
 				}
 			}
+		},
+		{
+			type: 'function',
+			function: {
+				name: 'solve_math',
+				description:
+					'Execute Python code with sympy for symbolic math: equations, calculus, algebra, linear algebra, etc. Print results to stdout. For symbolic results, also print LaTeX with print(latex(expr)) so you can render it in your response. Example: "from sympy import *\\nx = symbols(\'x\')\\nresult = solve(x**2 - 4, x)\\nprint(result)\\nprint(latex(result))"',
+				parameters: {
+					type: 'object',
+					properties: {
+						code: {
+							type: 'string',
+							description:
+								'Python code to execute. sympy is available for import. Print results and optionally print(latex(expr)) for LaTeX output.'
+						}
+					},
+					required: ['code']
+				}
+			}
+		},
+		{
+			type: 'function',
+			function: {
+				name: 'run_code',
+				description:
+					'Execute a code snippet and return its output. Use this to run Python or bash code for calculations, data processing, testing logic, or verifying answers. The code runs in an isolated sandbox.',
+				parameters: {
+					type: 'object',
+					properties: {
+						language: {
+							type: 'string',
+							description: 'The language to execute: python or bash'
+						},
+						code: { type: 'string', description: 'The code to execute' },
+						timeout: {
+							type: 'integer',
+							description: 'Timeout in seconds (default 30, max 120)'
+						},
+						offset: {
+							type: 'integer',
+							description:
+								'Character offset to start reading output from. Use when previous output was truncated.'
+						},
+						max_length: {
+							type: 'integer',
+							description: 'Maximum output length in characters (default 8192)'
+						}
+					},
+					required: ['language', 'code']
+				}
+			}
 		}
 	];
 
 	if (project) {
 		tools.push(...codingToolDefinitions);
+	}
+
+	if (memoryEnabled) {
+		tools.push(...memoryToolDefinitions);
 	}
 
 	return tools;
@@ -379,6 +498,64 @@ export async function executeTool(
 		case 'list_processes': {
 			if (!project) throw new Error('list_processes requires a project context');
 			return listBackgroundProcesses(project.id);
+		}
+		case 'solve_math': {
+			const result = await solveMath(args as { code: string });
+			return { result };
+		}
+		case 'run_code': {
+			const { output } = await runCode(
+				args as {
+					language: string;
+					code: string;
+					timeout?: number;
+					offset?: number;
+					max_length?: number;
+				}
+			);
+			return { result: output };
+		}
+		case 'memory_read': {
+			const filename = args.filename as string | undefined;
+			if (filename) {
+				const validationError = validateNoteFilename(filename);
+				if (validationError) return { result: validationError, error: true };
+				try {
+					const content = readNote(filename);
+					return { result: content };
+				} catch (e) {
+					return { result: e instanceof Error ? e.message : 'Failed to read note.', error: true };
+				}
+			}
+			const notes = listNotes();
+			if (notes.length === 0) return { result: 'No notes found.' };
+			return { result: 'Notes:\n' + notes.map((n) => `- ${n}`).join('\n') };
+		}
+		case 'memory_write': {
+			const filename = args.filename as string;
+			const content = args.content as string;
+			const summary = args.summary as string | undefined;
+			if (content == null || typeof content !== 'string') {
+				return { result: 'Error: content is required and must be a string.', error: true };
+			}
+			if (content.length > 64 * 1024) {
+				return { result: 'Error: content too large (max 64KB).', error: true };
+			}
+			const validationError = validateNoteFilename(filename);
+			if (validationError) return { result: validationError, error: true };
+			try {
+				writeNote(filename, content, summary);
+				return { result: `Wrote '${filename}'.` };
+			} catch (e) {
+				return { result: e instanceof Error ? e.message : 'Failed to write note.', error: true };
+			}
+		}
+		case 'memory_delete': {
+			const filename = args.filename as string;
+			const validationError = validateNoteFilename(filename);
+			if (validationError) return { result: validationError, error: true };
+			const result = deleteNote(filename);
+			return { result };
 		}
 		default:
 			throw new Error(`Unknown tool: ${name}`);
