@@ -311,11 +311,13 @@
 								{#if msg.images && msg.images.length > 0}
 									<div class="mt-1.5 flex flex-wrap gap-2">
 										{#each msg.images as img (img.name)}
-											<img
-												src={img.dataUrl}
-												alt={img.name}
-												class="max-h-[28rem] max-w-full rounded-lg border border-white/10 object-contain"
-											/>
+											<a href={img.dataUrl} target="_blank" rel="noopener noreferrer">
+												<img
+													src={img.dataUrl}
+													alt={img.name}
+													class="max-h-[28rem] max-w-full cursor-pointer rounded-lg border border-white/10 object-contain transition-opacity hover:opacity-80"
+												/>
+											</a>
 										{/each}
 									</div>
 								{/if}
@@ -464,11 +466,13 @@
 							<div class="border-t border-cyan-500/10 px-2.5 py-1.5">
 								<div class="flex flex-wrap gap-2">
 									{#each msg.images as img}
-										<img
-											src={img.dataUrl}
-											alt={img.name}
-											class="max-h-[28rem] max-w-full rounded-lg border border-white/10 object-contain"
-										/>
+										<a href={img.dataUrl} target="_blank" rel="noopener noreferrer">
+											<img
+												src={img.dataUrl}
+												alt={img.name}
+												class="max-h-[28rem] max-w-full cursor-pointer rounded-lg border border-white/10 object-contain transition-opacity hover:opacity-80"
+											/>
+										</a>
 									{/each}
 								</div>
 							</div>
@@ -646,11 +650,13 @@
 							<div class="border-t border-cyan-500/10 px-2.5 py-1.5">
 								<div class="flex flex-wrap gap-2">
 									{#each msg.images as img}
-										<img
-											src={img.dataUrl}
-											alt={img.name}
-											class="max-h-[28rem] max-w-full rounded-lg border border-white/10 object-contain"
-										/>
+										<a href={img.dataUrl} target="_blank" rel="noopener noreferrer">
+											<img
+												src={img.dataUrl}
+												alt={img.name}
+												class="max-h-[28rem] max-w-full cursor-pointer rounded-lg border border-white/10 object-contain transition-opacity hover:opacity-80"
+											/>
+										</a>
 									{/each}
 								</div>
 							</div>
