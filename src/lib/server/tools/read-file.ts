@@ -1,7 +1,7 @@
 import { resolveProjectPath } from './path-utils';
 
 export async function readProjectFile(
-	args: { path: string; offset?: number; limit?: number },
+	args: { path: string; offset?: number; line?: number; limit?: number },
 	projectRoot: string
 ): Promise<string> {
 	const resolved = resolveProjectPath(projectRoot, args.path);
@@ -14,7 +14,8 @@ export async function readProjectFile(
 	const text = await file.text();
 	const allLines = text.split('\n');
 	const totalLines = allLines.length;
-	const offset = args.offset ?? 0;
+	// line is 1-indexed, offset is 0-indexed. line takes priority.
+	const offset = args.line != null ? Math.max(0, args.line - 1) : (args.offset ?? 0);
 	const limit = args.limit ?? 200;
 
 	const sliced = allLines.slice(offset, offset + limit);

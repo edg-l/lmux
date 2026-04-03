@@ -23,6 +23,11 @@ function sseEvent(data: string): string {
 	return `data: ${data}\n\n`;
 }
 
+/** Combine client disconnect signal with a timeout so either cancels the fetch. */
+function combinedSignal(clientSignal: AbortSignal, timeoutMs: number): AbortSignal {
+	return AbortSignal.any([clientSignal, AbortSignal.timeout(timeoutMs)]);
+}
+
 const CHUNK_SIZE = 20;
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -68,6 +73,9 @@ export const POST: RequestHandler = async ({ request }) => {
 	const tools = toolsEnabled ? getToolDefinitions(project, memoryEnabled) : [];
 	const systemPrompt = resolveSystemPrompt(resolvedModelId, project);
 
+	// Combine client disconnect with internal timeouts so Stop button cancels llama.cpp requests
+	const clientSignal = request.signal;
+
 	const stream = new ReadableStream({
 		async start(controller) {
 			const encoder = new TextEncoder();
@@ -106,18 +114,18 @@ export const POST: RequestHandler = async ({ request }) => {
 				const prevMsg = normalized.length >= 2 ? normalized[normalized.length - 2] : null;
 				const isContinuation = prevMsg?.role === 'assistant' || prevMsg?.role === 'tool';
 				if (body.plan_enabled && body.project_id && !isContinuation) {
-					// Pass 0: Retrieval - get codebase context for the planning prompt
+					// Pass 0: Retrieval
 					const retrievalContext = await performRetrieval({
 						project: project!,
 						normalizedMessages: normalized,
 						llamaUrl,
 						samplingParams,
 						thinkingBudget,
-						signal: AbortSignal.timeout(120_000),
+						signal: combinedSignal(clientSignal, 120_000),
 						emit
 					});
 
-					// Pass 1: Planning
+					// Pass 1: Planning agent loop
 					const planText = await performPlanning({
 						project: project! as { id: number; path: string; name: string },
 						normalizedMessages: normalized,
@@ -125,7 +133,7 @@ export const POST: RequestHandler = async ({ request }) => {
 						llamaUrl,
 						samplingParams,
 						thinkingBudget,
-						signal: AbortSignal.timeout(180_000),
+						signal: combinedSignal(clientSignal, 300_000),
 						emit
 					});
 
@@ -153,17 +161,17 @@ export const POST: RequestHandler = async ({ request }) => {
 					const llamaRes = await fetch(`${llamaUrl}/v1/chat/completions`, {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
-						signal: AbortSignal.timeout(600_000),
+						signal: combinedSignal(clientSignal, 600_000),
 						body: JSON.stringify({
 							messages,
 							stream: true,
 							stream_options: { include_usage: true },
 							...(tools.length > 0 && !disableTools && { tools }),
 							...samplingParams,
-							...(thinkingBudget != null &&
-								thinkingBudget > 0 && {
-									thinking_budget: thinkingBudget
-								})
+							// Always send to avoid llama.cpp defaulting to unlimited
+							// >0 = budget cap, 0 = force end thinking immediately, -1 = unlimited
+							reasoning_budget_tokens:
+								thinkingBudget != null && thinkingBudget > 0 ? thinkingBudget : 0
 						})
 					});
 
@@ -244,7 +252,7 @@ export const POST: RequestHandler = async ({ request }) => {
 								controller,
 								encoder,
 								pendingApprovalIds,
-								signal: AbortSignal.timeout(600_000)
+								signal: combinedSignal(clientSignal, 600_000)
 							});
 
 							// Append tool result message to context

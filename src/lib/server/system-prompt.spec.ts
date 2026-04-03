@@ -1,35 +1,46 @@
 import { describe, it, expect } from 'bun:test';
-import { PLANNING_SYSTEM_PROMPT, buildPlanInjectedPrompt } from './system-prompt';
+import { buildPlanningSystemPrompt, buildPlanInjectedPrompt } from './system-prompt';
 
-describe('PLANNING_SYSTEM_PROMPT', () => {
-	it('contains instruction to produce only numbered steps', () => {
-		expect(PLANNING_SYSTEM_PROMPT).toContain('numbered step-by-step plan');
+describe('buildPlanningSystemPrompt', () => {
+	it('contains instruction to produce numbered steps', () => {
+		const prompt = buildPlanningSystemPrompt('');
+		expect(prompt).toContain('Numbered steps');
 	});
 
-	it('contains instruction for concise steps', () => {
-		expect(PLANNING_SYSTEM_PROMPT).toContain('ONE concise sentence');
+	it('contains instruction for atomic steps', () => {
+		const prompt = buildPlanningSystemPrompt('');
+		expect(prompt).toContain('ONE atomic action');
 	});
 
 	it('contains atomic step instruction', () => {
-		expect(PLANNING_SYSTEM_PROMPT).toContain('atomic');
+		const prompt = buildPlanningSystemPrompt('');
+		expect(prompt).toContain('atomic');
 	});
 
 	it('contains verify-and-repair instruction', () => {
-		expect(PLANNING_SYSTEM_PROMPT).toContain('verify-and-repair');
+		const prompt = buildPlanningSystemPrompt('');
+		expect(prompt).toContain('verify-and-repair');
 	});
 
-	it('instructs not to write code', () => {
-		expect(PLANNING_SYSTEM_PROMPT).toContain('no code snippets');
+	it('requires gap analysis section', () => {
+		const prompt = buildPlanningSystemPrompt('');
+		expect(prompt).toContain('Gap Analysis');
 	});
 
-	it('lists available tool names', () => {
-		expect(PLANNING_SYSTEM_PROMPT).toContain('read_file');
-		expect(PLANNING_SYSTEM_PROMPT).toContain('write_file');
-		expect(PLANNING_SYSTEM_PROMPT).toContain('edit_file');
-		expect(PLANNING_SYSTEM_PROMPT).toContain('insert_lines');
-		expect(PLANNING_SYSTEM_PROMPT).toContain('list_directory');
-		expect(PLANNING_SYSTEM_PROMPT).toContain('search_files');
-		expect(PLANNING_SYSTEM_PROMPT).toContain('run_command');
+	it('instructs to explore codebase before planning', () => {
+		const prompt = buildPlanningSystemPrompt('');
+		expect(prompt).toContain('MUST be tool calls');
+	});
+
+	it('appends retrieval context when provided', () => {
+		const prompt = buildPlanningSystemPrompt('## Some Context\nfile content here');
+		expect(prompt).toContain('## Codebase Context');
+		expect(prompt).toContain('file content here');
+	});
+
+	it('does not include codebase context section when retrieval is empty', () => {
+		const prompt = buildPlanningSystemPrompt('');
+		expect(prompt).not.toContain('## Codebase Context');
 	});
 });
 

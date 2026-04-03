@@ -27,6 +27,7 @@ export interface StreamCallbacks {
 	onPlanDelta?: (content: string) => void;
 	onPlanDone?: (content: string) => void;
 	onRetrievalStatus?: (status: string) => void;
+	onPlanningToolCall?: (toolName: string, toolArgs: string, resultPreview: string) => void;
 	onError?: (error: string) => void;
 	getMessageCount: () => number;
 }
@@ -106,6 +107,8 @@ export async function processSSEStream(
 					});
 				} else if (parsed.type === 'retrieval_status' && callbacks.onRetrievalStatus) {
 					callbacks.onRetrievalStatus(parsed.status);
+				} else if (parsed.type === 'planning_tool_call' && callbacks.onPlanningToolCall) {
+					callbacks.onPlanningToolCall(parsed.name, parsed.arguments, parsed.result_preview ?? '');
 				} else if (parsed.type === 'plan_delta' && callbacks.onPlanDelta) {
 					callbacks.onPlanDelta(parsed.content);
 				} else if (parsed.type === 'plan_done' && callbacks.onPlanDone) {

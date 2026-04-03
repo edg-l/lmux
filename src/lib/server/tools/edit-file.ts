@@ -56,6 +56,45 @@ function generateDiffSnippet(oldStr: string, newStr: string, lineNumber: number)
 	return diffLines.join('\n');
 }
 
+/**
+ * Find the closest match in the file content by checking if the first non-empty
+ * line of old_string exists somewhere. Returns the surrounding context.
+ */
+function findClosestMatch(
+	content: string,
+	oldString: string
+): { line: number; snippet: string } | null {
+	const oldLines = oldString.split('\n').filter((l) => l.trim().length > 0);
+	if (oldLines.length === 0) return null;
+
+	// Try the first non-empty line, then the longest line as search anchors
+	const candidates = [
+		oldLines[0].trim(),
+		...oldLines
+			.slice(1)
+			.sort((a, b) => b.trim().length - a.trim().length)
+			.map((l) => l.trim())
+	];
+
+	for (const needle of candidates) {
+		if (needle.length < 8) continue; // skip short lines that match too broadly
+		const idx = content.indexOf(needle);
+		if (idx !== -1) {
+			const lines = content.split('\n');
+			const matchLine = content.substring(0, idx).split('\n').length;
+			const start = Math.max(0, matchLine - 3);
+			const end = Math.min(lines.length, matchLine + 5);
+			const snippet = lines
+				.slice(start, end)
+				.map((l, i) => `${start + i + 1}: ${l}`)
+				.join('\n');
+			return { line: matchLine, snippet };
+		}
+	}
+
+	return null;
+}
+
 export async function editProjectFile(
 	args: { path: string; old_string: string; new_string: string; replace_all?: boolean },
 	projectRoot: string
@@ -84,7 +123,12 @@ export async function editProjectFile(
 	}
 
 	if (count === 0) {
-		return { result: 'old_string not found in file', error: true };
+		// Help the model by showing what's actually in the file near a partial match
+		const hint = findClosestMatch(content, args.old_string);
+		const msg = hint
+			? `old_string not found in file. Did you mean this (around line ${hint.line})?\n\n${hint.snippet}`
+			: `old_string not found in file. The file has ${content.split('\n').length} lines. Use read_file to check the actual content before retrying.`;
+		return { result: msg, error: true };
 	}
 
 	if (count > 1 && !args.replace_all) {

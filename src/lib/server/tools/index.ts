@@ -51,6 +51,11 @@ const codingToolDefinitions: ToolDefinition[] = [
 						type: 'integer',
 						description: 'Line offset to start reading from (0-indexed, default 0)'
 					},
+					line: {
+						type: 'integer',
+						description:
+							'Start reading from this line number (1-indexed). Use this instead of offset when you know the line number (e.g. from an error message). Overrides offset.'
+					},
 					limit: {
 						type: 'integer',
 						description: 'Maximum number of lines to return (default 200)'
@@ -252,6 +257,12 @@ const codingToolDefinitions: ToolDefinition[] = [
 	}
 ];
 
+const readOnlyToolNames = ['read_file', 'search_files', 'list_directory'] as const;
+
+export const PLANNER_TOOL_DEFINITIONS = codingToolDefinitions.filter((t) =>
+	(readOnlyToolNames as readonly string[]).includes(t.function.name)
+);
+
 const doneToolDefinition: ToolDefinition = {
 	type: 'function',
 	function: {
@@ -323,6 +334,32 @@ const memoryToolDefinitions: ToolDefinition[] = [
 		}
 	}
 ];
+
+export async function executePlannerTool(
+	name: string,
+	args: Record<string, unknown>,
+	projectPath: string
+): Promise<string> {
+	if (!(readOnlyToolNames as readonly string[]).includes(name)) {
+		return 'Error: Tool not available during planning';
+	}
+	switch (name) {
+		case 'read_file':
+			return readProjectFile(
+				args as { path: string; offset?: number; line?: number; limit?: number },
+				projectPath
+			);
+		case 'search_files':
+			return searchProjectFiles(
+				args as { pattern: string; glob?: string; path?: string },
+				projectPath
+			);
+		case 'list_directory':
+			return listProjectDirectory(args as { path?: string; depth?: number }, projectPath);
+		default:
+			throw new Error(`Unreachable: ${name} passed allowlist but not in switch`);
+	}
+}
 
 export function getToolDefinitions(
 	project?: { id: number; path: string },
@@ -469,7 +506,7 @@ export async function executeTool(
 		case 'read_file': {
 			if (!project) throw new Error('read_file requires a project context');
 			const result = await readProjectFile(
-				args as { path: string; offset?: number; limit?: number },
+				args as { path: string; offset?: number; line?: number; limit?: number },
 				project.path
 			);
 			return { result };

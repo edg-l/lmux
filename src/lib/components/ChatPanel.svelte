@@ -18,6 +18,7 @@
 		tokenUsage: TokenUsage | null;
 		collapsibleThinking?: boolean;
 		showApprovals?: boolean;
+		explorationSteps?: Array<{ tool: string; summary: string; preview: string }>;
 		inputPrefix?: Snippet;
 		inputSuffix?: Snippet;
 		inputHeader?: Snippet;
@@ -42,6 +43,7 @@
 		tokenUsage,
 		collapsibleThinking = true,
 		showApprovals = false,
+		explorationSteps = [],
 		inputPrefix,
 		inputSuffix,
 		inputHeader,
@@ -65,6 +67,13 @@
 	let editInput = $state('');
 	let messagesContainer = $state<HTMLDivElement | undefined>();
 	let textareaEl = $state<HTMLTextAreaElement | undefined>();
+
+	// Reset textarea height when input is cleared
+	$effect(() => {
+		if (!input && textareaEl) {
+			textareaEl.style.height = 'auto';
+		}
+	});
 
 	function toggleThinking(key: number) {
 		const next = new Set(expandedThinking);
@@ -291,6 +300,7 @@
 						isPlanExpanded={expandedPlans.has(idx)}
 						thinkingExpandedKeys={expandedThinking}
 						messageIdx={idx}
+						explorationSteps={idx === messages.length - 1 ? explorationSteps : []}
 						ontogglethinking={toggleThinking}
 						ontoggleplan={() => togglePlan(idx)}
 					/>
@@ -309,10 +319,15 @@
 			bind:this={textareaEl}
 			bind:value={input}
 			onkeydown={handleKeydown}
+			oninput={(e) => {
+				const el = e.currentTarget;
+				el.style.height = 'auto';
+				el.style.height = Math.min(el.scrollHeight, 320) + 'px';
+			}}
 			{placeholder}
 			rows="1"
 			{disabled}
-			class="max-h-[160px] min-h-[40px] flex-1 resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] transition-colors focus:border-[var(--color-accent)] focus:outline-none disabled:opacity-50"
+			class="max-h-80 min-h-[40px] flex-1 resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-elevated)] px-3 py-2.5 text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] transition-colors focus:border-[var(--color-accent)] focus:outline-none disabled:opacity-50"
 		></textarea>
 
 		{#if streaming}

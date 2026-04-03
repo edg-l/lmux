@@ -4,20 +4,7 @@ import { userInfo } from 'node:os';
 import { getSetting } from './settings';
 import { getModel } from './models';
 
-const AVAILABLE_TOOLS = [
-	'read_file',
-	'write_file',
-	'edit_file',
-	'insert_lines',
-	'list_directory',
-	'search_files',
-	'run_command',
-	'start_process',
-	'stop_process',
-	'list_processes'
-];
-
-export const RETRIEVAL_SYSTEM_PROMPT = `You are a search assistant. Given a user request about a coding project, output 3-5 search terms (one per line) that would find the most relevant source files. Output ONLY the search terms, one per line. No numbering, no explanation.
+export const RETRIEVAL_SYSTEM_PROMPT = `You are a search assistant. Given a user request about a coding project, output 6-10 search terms (one per line) that would find the most relevant source files. Output ONLY the search terms, one per line. No numbering, no explanation.
 
 Focus on: function names, file names, module names, API routes, class names, or distinctive strings that would appear in the relevant code.`;
 
@@ -26,19 +13,58 @@ export function parseSearchTerms(response: string): string[] {
 		.split('\n')
 		.map((line) => line.trim())
 		.filter((line) => line.length > 0 && line.length < 100)
-		.slice(0, 5);
+		.slice(0, 10);
 }
 
-export const PLANNING_SYSTEM_PROMPT = `You are a planning assistant. Given a user request and a coding project, produce ONLY a numbered step-by-step plan. Do NOT write code or produce any output besides the plan.
+export function buildPlanningSystemPrompt(retrievalContext: string): string {
+	let prompt = `You are a planning assistant. You have read-only tools: read_file, search_files, list_directory.
 
-Rules:
-- Each step must be ONE concise sentence describing WHAT to do, not the exact code (no code snippets or exact line changes).
-- Each step should be atomic -- one action per step. Use as many steps as needed.
-- The last steps MUST be a verify-and-repair loop: run the build/test command, read any errors, fix them, and re-run until it passes.
-- Do not explain reasoning or add commentary.
+## CRITICAL INSTRUCTIONS
 
-Available tools: ${AVAILABLE_TOOLS.join(', ')}
-`;
+You work in two phases:
+
+PHASE 1 - EXPLORE (mandatory, do this first):
+Your FIRST responses MUST be tool calls. You MUST read the actual source files that are relevant to the user's request before writing any plan. Do NOT skip this. Do NOT write any plan text yet.
+- Use list_directory to understand project structure
+- Use search_files to find relevant code patterns, types, functions, enums, structs
+- Use read_file to read the key files you find
+- Read at least 8-10 relevant source files before proceeding to Phase 2
+- For cross-cutting changes, read files in EVERY affected subsystem (frontend, IR, optimizer, register allocator, code generator, ABI, encoding, tests)
+- Pay attention to what ALREADY EXISTS vs what is MISSING
+- Look at existing naming conventions and patterns (e.g., if integer comparison uses Icmp(CondCode), float comparison should use Fcmp(CondCode), not separate FLt/FGt/FEq ops)
+- The user's instructions about "do not edit" or "only write X" apply to the EXECUTION phase, not to you. You are a read-only planner. Always read files.
+
+PHASE 2 - PLAN (only after exploring):
+After you have read enough source files, produce your final plan as a plain text response (no tool calls).
+
+## Required plan structure:
+
+### What Already Exists
+List specific functions, types, files, and infrastructure that already exist and are relevant. Reference exact names from the code you read. This prevents duplicate work.
+
+### What's Missing (Gap Analysis)
+List specific gaps, bugs, or missing pieces you found by reading the code. Reference exact file paths and function names.
+
+### Implementation Steps
+Numbered steps grouped into phases. Each step must:
+- Be ONE atomic action
+- Name the EXACT file(s) to modify (no "e.g." or "likely" or "possibly" or "identify the relevant")
+- Name the specific function, type, or enum to change
+- Follow existing naming conventions in the codebase for new types/ops/functions
+- End phases with a checkpoint: run build/test command
+- For complex tasks, you should have 15-30+ steps. A 5-step plan for a multi-subsystem change is too shallow.
+
+### Risks and Edge Cases
+List any tricky edge cases, compatibility concerns, or known limitations.
+
+The final phase MUST be a verify-and-repair loop: run build/test, read errors, fix, re-run.`;
+
+	if (retrievalContext) {
+		prompt += `\n\n## Codebase Context\n${retrievalContext}`;
+	}
+
+	return prompt;
+}
 
 export function buildPlanInjectedPrompt(codingPrompt: string, planText: string): string {
 	if (!planText.trim()) return codingPrompt;

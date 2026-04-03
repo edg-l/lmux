@@ -60,6 +60,7 @@
 	let planEnabled = $state(true);
 	let planText = $state('');
 	let retrievalStatus = $state<string | null>(null);
+	let planExplorationSteps = $state<Array<{ tool: string; summary: string; preview: string }>>([]);
 
 	// Reasoning budget state
 	let thinkingBudgetEnabled = $state(true);
@@ -387,6 +388,7 @@
 		messages = [...messages, { role: 'assistant', content: '' }];
 
 		planText = '';
+		planExplorationSteps = [];
 		retrievalStatus = null;
 		streaming = true;
 		const controller = new AbortController();
@@ -513,11 +515,22 @@
 				},
 				onRetrievalStatus: (status) => {
 					retrievalStatus = status === 'done' ? null : status;
-					// Show status in the assistant message while searching
 					if (status === 'searching') {
 						messages = messages.map((m, i) =>
 							i === messages.length - 1 && m.role === 'assistant'
 								? { ...m, content: '*Searching codebase for relevant context...*' }
+								: m
+						);
+					} else if (status === 'exploring') {
+						messages = messages.map((m, i) =>
+							i === messages.length - 1 && m.role === 'assistant'
+								? { ...m, content: '*Exploring codebase for planning...*' }
+								: m
+						);
+					} else if (status === 'planning') {
+						messages = messages.map((m, i) =>
+							i === messages.length - 1 && m.role === 'assistant'
+								? { ...m, content: '*Generating plan...*' }
 								: m
 						);
 					} else if (status === 'done') {
@@ -525,6 +538,30 @@
 							i === messages.length - 1 && m.role === 'assistant' ? { ...m, content: '' } : m
 						);
 					}
+				},
+				onPlanningToolCall: (toolName, toolArgs, resultPreview) => {
+					let summary = `${toolName}`;
+					try {
+						const args = JSON.parse(toolArgs);
+						if (toolName === 'read_file' && args.path) {
+							summary = `Read ${args.path}`;
+						} else if (toolName === 'search_files' && args.pattern) {
+							summary = `Searched for "${args.pattern}"`;
+						} else if (toolName === 'list_directory') {
+							summary = `Listed ${args.path || '/'}`;
+						}
+					} catch {
+						// Use default summary
+					}
+					planExplorationSteps = [
+						...planExplorationSteps,
+						{ tool: toolName, summary, preview: resultPreview }
+					];
+					messages = messages.map((m, i) =>
+						i === messages.length - 1 && m.role === 'assistant'
+							? { ...m, content: `*Planning: ${summary}...*` }
+							: m
+					);
 				},
 				onPlanDelta: (content) => {
 					planText += content;
@@ -729,6 +766,7 @@
 						{tokenUsage}
 						collapsibleThinking={true}
 						showApprovals={true}
+						explorationSteps={planExplorationSteps}
 						disabled={streaming || serverInfo?.status !== 'ready'}
 						placeholder={serverInfo?.status === 'ready' ? 'Message...' : 'Load a model first...'}
 						onsend={sendMessage}

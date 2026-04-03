@@ -447,6 +447,72 @@ describe('processSSEStream – plan_done events', () => {
 });
 
 // ---------------------------------------------------------------------------
+// planning_tool_call events
+// ---------------------------------------------------------------------------
+
+describe('processSSEStream – planning_tool_call events', () => {
+	it('calls onPlanningToolCall with name, arguments, and result_preview', async () => {
+		const response = makeResponseFromString(
+			dataLine({
+				type: 'planning_tool_call',
+				name: 'read_file',
+				arguments: '{"path":"src/main.ts"}',
+				result_preview: 'fn main() {'
+			})
+		);
+		const calls: Array<{ name: string; args: string; preview: string }> = [];
+		await processSSEStream(
+			response,
+			noSignal,
+			makeCallbacks({
+				onPlanningToolCall: (name, args, preview) => calls.push({ name, args, preview })
+			})
+		);
+		expect(calls).toHaveLength(1);
+		expect(calls[0].name).toBe('read_file');
+		expect(calls[0].args).toBe('{"path":"src/main.ts"}');
+		expect(calls[0].preview).toBe('fn main() {');
+	});
+
+	it('handles multiple planning_tool_call events in order', async () => {
+		const text =
+			dataLine({
+				type: 'planning_tool_call',
+				name: 'read_file',
+				arguments: '{"path":"a.ts"}'
+			}) +
+			dataLine({
+				type: 'planning_tool_call',
+				name: 'search_files',
+				arguments: '{"pattern":"TODO"}'
+			});
+		const response = makeResponseFromString(text);
+		const calls: Array<{ name: string; args: string }> = [];
+		await processSSEStream(
+			response,
+			noSignal,
+			makeCallbacks({
+				onPlanningToolCall: (name, args, _preview) => calls.push({ name, args })
+			})
+		);
+		expect(calls).toHaveLength(2);
+		expect(calls[0].name).toBe('read_file');
+		expect(calls[1].name).toBe('search_files');
+	});
+
+	it('does not throw when onPlanningToolCall callback is absent', async () => {
+		const response = makeResponseFromString(
+			dataLine({
+				type: 'planning_tool_call',
+				name: 'list_directory',
+				arguments: '{}'
+			})
+		);
+		await expect(processSSEStream(response, noSignal, makeCallbacks())).resolves.toBeDefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Edge cases: malformed / non-data lines
 // ---------------------------------------------------------------------------
 

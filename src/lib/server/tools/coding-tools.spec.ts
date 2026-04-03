@@ -90,7 +90,8 @@ describe('editProjectFile', () => {
 			{ path: 'hello.ts', old_string: 'DOES NOT EXIST', new_string: 'x' },
 			tmpDir
 		);
-		expect(result.result).toBe('old_string not found in file');
+		expect(result.result).toContain('old_string not found in file');
+		expect(result.error).toBe(true);
 		expect(result.fileChanged).toBeUndefined();
 	});
 

@@ -12,6 +12,7 @@
 		isPlanExpanded: boolean;
 		thinkingExpandedKeys: Set<number>;
 		messageIdx: number;
+		explorationSteps?: Array<{ tool: string; summary: string; preview: string }>;
 		ontogglethinking: (key: number) => void;
 		ontoggleplan: () => void;
 	}
@@ -25,6 +26,7 @@
 		isPlanExpanded,
 		thinkingExpandedKeys,
 		messageIdx,
+		explorationSteps = [],
 		ontogglethinking,
 		ontoggleplan
 	}: Props = $props();
@@ -67,6 +69,19 @@
 				{/if}
 			</button>
 			{#if planExpanded}
+				{#if explorationSteps.length > 0}
+					<div class="border-t border-violet-500/10 px-3 py-2">
+						<p class="mb-1 text-[10px] font-medium tracking-wider text-violet-400/40 uppercase">
+							Explored
+						</p>
+						{#each explorationSteps as step}
+							<div class="flex items-start gap-1.5 py-0.5">
+								<span class="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400/30"></span>
+								<span class="text-[11px] text-violet-300/50">{step.summary}</span>
+							</div>
+						{/each}
+					</div>
+				{/if}
 				<div class="border-t border-violet-500/10 px-3 py-2">
 					<p class="text-xs leading-relaxed whitespace-pre-wrap text-violet-200/60">
 						{msg.plan}

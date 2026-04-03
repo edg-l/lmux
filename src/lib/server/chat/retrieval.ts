@@ -31,6 +31,13 @@ export async function performRetrieval(options: {
 		const tree = await listProjectDirectory({ depth: 3 }, project.path);
 		retrievalContext += `## Project Structure\n${tree}\n\n`;
 
+		// Inject CLAUDE.md if present (skip AGENTS.md: it's already injected via resolveSystemPrompt)
+		const claudeMd = await readProjectFile({ path: 'CLAUDE.md', limit: 200 }, project.path);
+		if (!claudeMd.startsWith('File not found')) {
+			const truncated = claudeMd.length > 2000 ? claudeMd.slice(0, 2000) : claudeMd;
+			retrievalContext += `## CLAUDE.md\n${truncated}\n\n`;
+		}
+
 		// Ask the model for search terms
 		const retrievalMessages: ChatMessage[] = [
 			{ role: 'system', content: RETRIEVAL_SYSTEM_PROMPT },
@@ -47,7 +54,7 @@ export async function performRetrieval(options: {
 				stream_options: { include_usage: true },
 				max_tokens: 1024,
 				...samplingParams,
-				...(thinkingBudget != null && thinkingBudget > 0 && { thinking_budget: thinkingBudget })
+				reasoning_budget_tokens: thinkingBudget != null && thinkingBudget > 0 ? thinkingBudget : 0
 			})
 		});
 
@@ -73,14 +80,14 @@ export async function performRetrieval(options: {
 					}
 				}
 
-				// Read first 50 lines of up to 5 relevant files
-				const filesToRead = [...seenFiles].slice(0, 5);
+				// Read up to 20 relevant files (no line limit - local LLMs have large contexts)
+				const filesToRead = [...seenFiles].slice(0, 20);
 				for (const filePath of filesToRead) {
 					// Convert absolute path to relative
 					const relPath = filePath.startsWith(project.path)
 						? filePath.slice(project.path.length + 1)
 						: filePath;
-					const content = await readProjectFile({ path: relPath, limit: 50 }, project.path);
+					const content = await readProjectFile({ path: relPath }, project.path);
 					if (!content.startsWith('File not found')) {
 						snippets.push(`### ${relPath}\n\`\`\`\n${content}\n\`\`\``);
 					}
@@ -91,8 +98,8 @@ export async function performRetrieval(options: {
 				}
 			}
 		}
-	} catch {
-		// Retrieval is best-effort, continue without it
+	} catch (err) {
+		console.error('[retrieval] Error during codebase retrieval:', err);
 	}
 
 	emit('retrieval_status', { status: 'done' });
