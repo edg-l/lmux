@@ -800,7 +800,7 @@
 						{activeConversationId}
 						{serverInfo}
 						{tokenUsage}
-						collapsibleThinking={false}
+						collapsibleThinking={true}
 						showApprovals={true}
 						disabled={streaming || serverInfo?.status !== 'ready'}
 						placeholder={serverInfo?.status === 'ready' ? 'Message...' : 'Load a model first...'}

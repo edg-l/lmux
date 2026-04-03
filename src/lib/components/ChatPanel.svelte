@@ -319,7 +319,7 @@
 							</div>
 						{/if}
 					</div>
-				{:else if msg.role === 'tool_status'}
+				{:else if msg.role === 'tool_status' && msg.toolName !== 'done'}
 					{@const isExpanded = expandedTools.has(idx)}
 					{@const toolSummary = getToolSummary(msg.toolName, msg.toolArgs)}
 					{@const parsed =
